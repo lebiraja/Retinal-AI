@@ -25,7 +25,7 @@ from model import build_model
 def load_model(checkpoint_path: str = config.BEST_MODEL_PATH) -> torch.nn.Module:
     """Load model from checkpoint. Call once and reuse the returned model."""
     model = build_model(num_classes=config.NUM_CLASSES)
-    checkpoint = torch.load(checkpoint_path, map_location=config.DEVICE)
+    checkpoint = torch.load(checkpoint_path, map_location=config.DEVICE, weights_only=False)
     model.load_state_dict(checkpoint["model_state_dict"])
     model = model.to(config.DEVICE)
     model.eval()

@@ -1,15 +1,30 @@
-# Eye Disease Classification & Advisory System — Documentation
+# Retinal Disease Classifier — Complete Documentation
 
-Welcome! This folder contains complete documentation for the CNN-based retinal disease classifier (Phase 1: Model Training).
+**AI-Based Eye Disease Classification and Advisory System** | Phase 1 Complete ✅
 
-## Quick Links
+---
 
+## 📚 Documentation Index
+
+### **For End Users**
+- **[USER_GUIDE.md](./USER_GUIDE.md)** — Installation, basic usage, examples, troubleshooting
+
+### **For Backend Developers**
+- **[BACKEND.md](./BACKEND.md)** — FastAPI/Flask integration, API endpoints, deployment
+
+### **For ML Developers & Contributors**
+- **[DEVELOPER.md](./DEVELOPER.md)** — Fine-tuning, model modifications, setup
+
+### **Technical Details**
 - **[SETUP.md](./SETUP.md)** — Environment setup, dependencies, GPU configuration
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** — Model design, loss functions, data pipeline
-- **[TRAINING.md](./TRAINING.md)** — How to run training, monitor progress, tune hyperparameters
-- **[INFERENCE.md](./INFERENCE.md)** — Running predictions on new images, output formats
-- **[API_REFERENCE.md](./API_REFERENCE.md)** — Detailed API docs for each module
+- **[TRAINING.md](./TRAINING.md)** — How to run training, monitoring, hyperparameter tuning
+- **[INFERENCE.md](./INFERENCE.md)** — Predictions, output formats, advanced usage
+- **[API_REFERENCE.md](./API_REFERENCE.md)** — Complete code API documentation
 - **[TROUBLESHOOTING.md](./TROUBLESHOOTING.md)** — Common issues and solutions
+
+### **Model Information**
+- **[MODEL_CARD.md](./MODEL_CARD.md)** — Model specifications, performance metrics, supported diseases
 
 ## Project Overview
 
