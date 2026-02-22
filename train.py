@@ -7,17 +7,21 @@ Usage:
     python train.py --epochs 2    # sanity-check run
 """
 
+import os
+# Optimize GPU memory allocation to reduce fragmentation
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
 import argparse
 import csv
-import os
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
 from sklearn.metrics import f1_score, roc_auc_score
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 import config
 from dataset import RetinalDataset, get_pos_weights
@@ -89,16 +93,21 @@ def save_plots(log_csv: str):
 def train_one_epoch(model, loader, criterion, optimizer, scaler, device):
     model.train()
     total_loss = 0.0
-    for images, labels in loader:
+    device_type = "cuda" if device.type == "cuda" else "cpu"
+
+    pbar = tqdm(loader, desc="Training", leave=False, dynamic_ncols=True)
+    for images, labels in pbar:
         images, labels = images.to(device), labels.to(device)
         optimizer.zero_grad()
-        with autocast():
+        with autocast(device_type=device_type):
             logits = model(images)
             loss = criterion(logits, labels)
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
         total_loss += loss.item()
+        pbar.set_postfix({"loss": f"{total_loss / (pbar.n + 1):.4f}"})
+
     return total_loss / len(loader)
 
 
@@ -107,16 +116,19 @@ def evaluate(model, loader, criterion, device):
     model.eval()
     total_loss = 0.0
     all_targets, all_probs = [], []
+    device_type = "cuda" if device.type == "cuda" else "cpu"
 
-    for images, labels in loader:
+    pbar = tqdm(loader, desc="Validating", leave=False, dynamic_ncols=True)
+    for images, labels in pbar:
         images, labels = images.to(device), labels.to(device)
-        with autocast():
+        with autocast(device_type=device_type):
             logits = model(images)
             loss = criterion(logits, labels)
         total_loss += loss.item()
         probs = torch.sigmoid(logits).cpu().numpy()
         all_probs.append(probs)
         all_targets.append(labels.cpu().numpy())
+        pbar.set_postfix({"loss": f"{total_loss / (pbar.n + 1):.4f}"})
 
     all_targets = np.concatenate(all_targets, axis=0)
     all_probs   = np.concatenate(all_probs, axis=0)
@@ -157,7 +169,8 @@ def main(epochs: int = config.EPOCHS):
         weight_decay=config.WEIGHT_DECAY,
     )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
-    scaler = GradScaler()
+    device_type = "cuda" if device.type == "cuda" else "cpu"
+    scaler = GradScaler(device=device_type)
 
     # CSV log header
     log_exists = os.path.exists(config.LOG_CSV_PATH)
@@ -171,20 +184,20 @@ def main(epochs: int = config.EPOCHS):
 
     best_auc = 0.0
 
-    for epoch in range(1, epochs + 1):
-        print(f"\nEpoch {epoch}/{epochs}")
-
+    epoch_pbar = tqdm(range(1, epochs + 1), desc="Epochs", dynamic_ncols=True)
+    for epoch in epoch_pbar:
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, scaler, device)
         val_loss, metrics = evaluate(model, val_loader, criterion, device)
         scheduler.step()
 
         current_lr = optimizer.param_groups[-1]["lr"]
-        print(
-            f"  train_loss={train_loss:.4f}  val_loss={val_loss:.4f}  "
-            f"mean_auc={metrics['mean_auc']:.4f}  "
-            f"macro_f1={metrics['macro_f1']:.4f}  micro_f1={metrics['micro_f1']:.4f}  "
-            f"lr={current_lr:.2e}"
-        )
+        epoch_pbar.set_postfix({
+            "train_loss": f"{train_loss:.4f}",
+            "val_loss": f"{val_loss:.4f}",
+            "auc": f"{metrics['mean_auc']:.4f}",
+            "f1": f"{metrics['macro_f1']:.4f}",
+            "lr": f"{current_lr:.2e}",
+        })
 
         log_writer.writerow({
             "epoch": epoch,
@@ -198,6 +211,7 @@ def main(epochs: int = config.EPOCHS):
         log_file.flush()
 
         # Save best checkpoint
+        best_mark = ""
         if metrics["mean_auc"] > best_auc:
             best_auc = metrics["mean_auc"]
             torch.save({
@@ -206,7 +220,12 @@ def main(epochs: int = config.EPOCHS):
                 "optimizer_state_dict": optimizer.state_dict(),
                 "mean_auc": best_auc,
             }, config.BEST_MODEL_PATH)
-            print(f"  ✓ Best model saved (mean_auc={best_auc:.4f})")
+            best_mark = " ⭐ BEST"
+
+        epoch_pbar.write(
+            f"Epoch {epoch:2d} | train_loss={train_loss:.4f}  val_loss={val_loss:.4f}  "
+            f"auc={metrics['mean_auc']:.4f}  f1={metrics['macro_f1']:.4f}{best_mark}"
+        )
 
         # Always save last checkpoint
         torch.save({

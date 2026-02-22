@@ -22,11 +22,11 @@ LAST_MODEL_PATH = os.path.join(CHECKPOINT_DIR, "last_model.pt")
 LOG_CSV_PATH    = os.path.join(LOG_DIR, "training_log.csv")
 
 # ── Image ──────────────────────────────────────────────────────────────────────
-IMG_SIZE = 512
+IMG_SIZE = 384  # Reduced from 512 to save VRAM (still sufficient detail)
 
 # ── Training ───────────────────────────────────────────────────────────────────
-BATCH_SIZE   = 20       # tuned for RTX 4050 6GB @ 512×512 with EfficientNet-B4
-NUM_WORKERS  = 6
+BATCH_SIZE   = 5        # Reduced from 20 → 10 → 5 for RTX 4050 Mobile (5.6GB actual VRAM)
+NUM_WORKERS  = 2        # Reduced from 6 to save CPU memory
 EPOCHS       = 50
 LR           = 1e-4     # classifier head LR; backbone gets LR * 0.1
 WEIGHT_DECAY = 1e-2
