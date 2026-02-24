@@ -25,6 +25,26 @@ env/
 .venv/
 .env/
 
+# Model weights / checkpoints
+*.pt
+*.pth
+*.bin
+*.ckpt
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# API runtime
+uploads/
+tmp/
+logs/
+*.log
+
+# HuggingFace cache
+.cache/
+
 # OS
 .DS_Store
 Thumbs.db
