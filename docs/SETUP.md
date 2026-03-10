@@ -31,12 +31,37 @@ cd ~/projects/mindcraft-2k26
 Verify the structure:
 ```bash
 ls -la
-# Expected output includes: config.py, dataset.py, model.py, train.py, inference.py, dataset/, docs/, etc.
+# Expected output includes: docker-compose.yml, nginx/, services/, dataset/
 ```
 
 ---
 
-## Step 2: Create Virtual Environment
+## Step 2: Running with Docker (Recommended)
+
+The easiest way to run the entire Phase 2 stack (Frontend, Backend Gateway, GPU Model Service) is via Docker Compose.
+
+**Prerequisites:**
+- Docker installed
+- NVIDIA Container Toolkit installed (for GPU access)
+
+```bash
+# Start the full stack in detached mode
+docker compose up --build -d
+```
+
+**Accessing the application:**
+- Web App: `http://localhost:80` (or simply `http://localhost`)
+- API Docs: `http://localhost/api/docs`
+
+> **Note:** The `hf-cache` volume will persist the downloaded HuggingFace model across restarts so it only downloads once.
+
+---
+
+## Manual Local Setup (For ML Development)
+
+If you intend to train new models or modify `dataset.py`, `train.py`, or `inference.py`, you should set up a local Python virtual environment instead.
+
+### 2a. Create Virtual Environment
 
 ```bash
 python3 -m venv venv
@@ -302,28 +327,6 @@ To reactivate in a new terminal:
 ```bash
 cd ~/projects/mindcraft-2k26
 source venv/bin/activate
-```
-
----
-
-## Docker Setup (Optional)
-
-For reproducible environments across machines:
-
-```dockerfile
-FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
-RUN apt-get update && apt-get install -y python3-venv python3-pip
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-COPY . .
-CMD ["python3", "train.py"]
-```
-
-Build and run:
-```bash
-docker build -t retinal-disease .
-docker run --gpus all -v $(pwd)/outputs:/app/outputs retinal-disease
 ```
 
 ---

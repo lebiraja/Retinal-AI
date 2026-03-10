@@ -18,6 +18,26 @@ Complete guide for using the retinal disease classifier model.
 
 ## Quick Start
 
+The fastest way to use the application is to run the complete web platform via Docker Compose.
+
+**Prerequisites:**
+- Docker & Docker Compose
+- NVIDIA Container Toolkit (for GPU inference)
+
+**Run Application:**
+```bash
+docker compose up --build -d
+```
+
+**Access Web UI:**
+Navigate to `http://localhost` in your browser.
+
+---
+
+## Local ML Inference Quick Start (No Web UI)
+
+If you just want to run the model script locally from the CLI:
+
 **Install:**
 ```bash
 pip install torch torchvision pillow albumentations scikit-learn numpy
@@ -94,7 +114,16 @@ EOF
 
 ## Basic Usage
 
-### Using Command Line
+### Using the Web App
+
+1. Ensure the Docker containers are running (`docker compose up -d`).
+2. Open `http://localhost`.
+3. Drag and drop a `.png`, `.jpg`, or `.jpeg` fundus image into the upload area.
+4. (Optional) Adjust the detection threshold slider.
+5. Click **Process Image**.
+6. Review the detected diseases, risk level, and visual confidence bar charts on the dashboard.
+
+### Using Command Line (Local Setup)
 
 ```bash
 # Single image
@@ -390,6 +419,6 @@ image = Image.open("image.bmp").convert("RGB").save("image.png")
 
 ---
 
-**Last Updated:** February 22, 2026
+**Last Updated:** March 2026
 **Model Version:** 1.0
-**Status:** Production Ready ✅
+**Status:** Phase 2 Production Ready ✅

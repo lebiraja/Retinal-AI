@@ -47,6 +47,29 @@ python3 train.py --epochs 2
 
 ---
 
+## Docker & Microservices Issues
+
+### Issue: GPU not detected by Docker
+
+**Symptom:**
+```
+Error response from daemon: could not select device driver "" with capabilities: [[gpu]]
+```
+
+**Cause:** NVIDIA Container Toolkit is not installed on the host machine.
+
+**Solution:** Install `nvidia-docker2` or `nvidia-container-toolkit` for your OS, restart the docker daemon (`sudo systemctl restart docker`), and retry `docker compose up`.
+
+### Issue: 422 Unprocessable Entity on Upload
+
+**Symptom:** The web app immediately rejects an image with a message about aspect ratio, corners, or colors.
+
+**Cause:** The new **Validation Service** heuristics tripped. The model only accepts retinal fundus photographs. 
+
+**Solution:** Ensure you are uploading a genuine retinal scan (roughly square, dark corners, warm/red profile).
+
+---
+
 ### Issue: `ImportError: cannot import name 'autocast'`
 
 **Symptom:**
@@ -681,4 +704,4 @@ If your issue isn't covered:
 
 ---
 
-**Last Updated:** 2026-02-22
+**Last Updated:** March 2026

@@ -447,7 +447,16 @@ def predict(
 }
 ```
 
-**Example:**
+> **Note on Microservices API:** 
+> When calling the live REST API (via Nginx proxy at `POST /api/predict`), the **Validation Service** performs a heuristic check before inference. If the image uploaded does not look like a retinal fundus scan (e.g. wrong aspect ratio, incorrect colors, or bright corners), the API will immediately return:
+> ```json
+> HTTP 422 Unprocessable Entity
+> {
+>   "detail": "'image.png' does not appear to be a retinal fundus photograph (aspect ratio 2.10:1 is too wide/tall). Please upload a genuine fundus/retinal scan image."
+> }
+> ```
+
+**Example Local CLI Usage:**
 ```python
 from inference import predict, load_model
 

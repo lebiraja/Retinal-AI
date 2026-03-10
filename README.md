@@ -26,7 +26,9 @@ A FastAPI backend that performs multi-label retinal disease screening from fundu
 
 | Property | Value |
 |----------|-------|
-| Framework | FastAPI + Uvicorn |
+| Framework | FastAPI + Uvicorn (Microservices architecture) |
+| Frontend | React + Vite Single Page Application |
+| Reverse Proxy | Nginx |
 | ML Model | EfficientNet-B4 (torchvision) |
 | Task | Multi-label image classification |
 | Classes | 45 retinal diseases |
@@ -63,24 +65,27 @@ The checkpoint is automatically downloaded from HuggingFace on first startup and
 
 ```
 Team-B-Backend/
-├── app/
-│   ├── main.py                  # FastAPI entry point, CORS, lifespan
-│   ├── config.py                # API constants (labels, thresholds, limits)
-│   ├── schemas.py               # Pydantic request/response models
-│   ├── routers/
-│   │   └── predict.py           # All HTTP route handlers
-│   └── services/
-│       ├── model_service.py     # Singleton model loader (HuggingFace)
-│       ├── inference_service.py # Image preprocessing + forward pass
-│       └── advisory_service.py  # Risk scoring + advisory text
+├── docker-compose.yml           # Core deployment orchestration
+├── nginx/                       # Nginx reverse proxy config
+├── services/
+│   ├── frontend/                # React SPA frontend
+│   ├── backend/                 # API Gateway (FastAPI)
+│   │   └── src/
+│   │       ├── main.py          # API entry point & CORS
+│   │       ├── routers/predict.py
+│   │       └── services/        # Validation & Advisory services
+│   └── model/                   # GPU Inference Microservice
+│       └── src/
+│           ├── main.py          # Dedicated inference worker
+│           └── services/        # Singleton HF model loader
+├── docs/                        # Extensive Documentation
 ├── model.py                     # EfficientNet-B4 architecture definition
 ├── config.py                    # Training constants (paths, hyperparams)
 ├── dataset.py                   # PyTorch dataset (training only)
 ├── train.py                     # Training script
 ├── inference.py                 # Standalone CLI inference script
-├── hf_config.json               # HuggingFace repo metadata
 ├── requirements.txt             # Python dependencies
-└── run.sh                       # Helper script to start the server
+└── Makefile                     # Helper commands
 ```
 
 ---
@@ -117,29 +122,29 @@ pip install -r requirements.txt
 
 ---
 
-## Running the Server
+## Running the Application
 
-### Development (with auto-reload)
+The entire app (frontend, backend API gateway, and GPU model service) runs via Docker Compose.
 
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
+### Requirements
+- Docker and Docker Compose
+- NVIDIA Container Toolkit (for GPU passthrough to the model service)
 
-### Production
-
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
-```
-
-> **Note:** Use `--workers 1`. The model is a singleton held in memory — multiple workers would each load their own copy, multiplying VRAM usage.
-
-### Using the helper script
+### Start up
 
 ```bash
-chmod +x run.sh && ./run.sh
+docker compose up --build -d
 ```
+
+Access the application:
+- **Frontend App**: `http://localhost:80` (or `http://localhost`)
+- **API Docs**: `http://localhost/api/docs`
+
+> **Note:** The heavy GPU processing is isolated to the `model-service`. Ensure you have `nvidia-docker` correctly configured if you want hardware acceleration.
 
 ### Standalone CLI inference (no server required)
+
+If you just want to run inference natively without Docker:
 
 ```bash
 python inference.py --image path/to/fundus.png

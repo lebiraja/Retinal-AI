@@ -1,6 +1,6 @@
 # Retinal Disease Classifier — Complete Documentation
 
-**AI-Based Eye Disease Classification and Advisory System** | Phase 1 Complete ✅
+**AI-Based Eye Disease Classification and Advisory System** | Phase 2 Complete (Dockerized Microservices + Web UI) ✅
 
 ---
 
@@ -16,11 +16,13 @@
 - **[DEVELOPER.md](./DEVELOPER.md)** — Fine-tuning, model modifications, setup
 
 ### **Technical Details**
+- **[SYSTEM_ARCHITECTURE.md](./SYSTEM_ARCHITECTURE.md)** — **NEW:** Docker microservices architecture flow
+- **[VALIDATION_SERVICE.md](./VALIDATION_SERVICE.md)** — **NEW:** Heuristic image validation details
 - **[SETUP.md](./SETUP.md)** — Environment setup, dependencies, GPU configuration
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** — Model design, loss functions, data pipeline
 - **[TRAINING.md](./TRAINING.md)** — How to run training, monitoring, hyperparameter tuning
 - **[INFERENCE.md](./INFERENCE.md)** — Predictions, output formats, advanced usage
-- **[API_REFERENCE.md](./API_REFERENCE.md)** — Complete code API documentation
+- **[API_REFERENCE.md](./API_REFERENCE.md)** — Complete API documentation
 - **[TROUBLESHOOTING.md](./TROUBLESHOOTING.md)** — Common issues and solutions
 
 ### **Model Information**
@@ -53,6 +55,12 @@
 
 ```
 mindcraft-2k26/
+├── docker-compose.yml     # Run the complete application
+├── nginx/                 # Reverse proxy configuration
+├── services/              # Microservices
+│   ├── frontend/          # React App
+│   ├── backend/           # FastAPI Gateway & Validation
+│   └── model/             # PyTorch GPU Inference Engine
 ├── config.py              # Centralized configuration
 ├── dataset.py             # RetinalDataset class + transforms
 ├── model.py               # EfficientNet-B4 builder
@@ -73,15 +81,29 @@ mindcraft-2k26/
 │
 └── docs/                  # This documentation
     ├── README.md          # You are here
+    ├── SYSTEM_ARCHITECTURE.md # Microservices data flow
+    ├── VALIDATION_SERVICE.md  # Image validation heuristics
     ├── SETUP.md           # Installation & setup
     ├── ARCHITECTURE.md    # Model & design details
     ├── TRAINING.md        # Training workflow
     ├── INFERENCE.md       # Inference & deployment
-    ├── API_REFERENCE.md   # Code API docs
+    ├── API_REFERENCE.md   # API docs
     └── TROUBLESHOOTING.md # FAQ & debugging
 ```
 
-## Quick Start
+## Quick Start (Application)
+
+The easiest way to start the complete system (UI + Backend + ML Engine) is via Docker Compose:
+
+```bash
+# Requires Docker & NVIDIA Container Toolkit
+docker compose up --build -d
+```
+Access the UI at `http://localhost`.
+
+## Quick Start (Training & Dev)
+
+If you are developing the ML models:
 
 ### 1. Install & Setup (5 min)
 
@@ -137,12 +159,11 @@ EfficientNet-B4 at 512×512 with batch_size=20 uses ~5.8GB. Solutions if you hit
 - Enable gradient accumulation
 - Use mixed precision (already enabled via `torch.cuda.amp`)
 
-## Next Phase
+## Completed Phases
 
-**Phase 2** (not in this repo yet) will build a web app/CLI that:
-1. Loads `outputs/checkpoints/best_model.pt`
-2. Calls `inference.py` on user-uploaded images
-3. Returns disease predictions + confidence scores + advisory messages
+**Phase 1 (Training)** - Train EfficientNet-B4 model with heavily imbalanced RFMiD dataset. ✅
+
+**Phase 2 (Application Deployment)** - Build microservices API, validation heuristics, and React frontend Web App deployment via Docker Compose. ✅
 
 ## For New Developers
 
@@ -157,5 +178,5 @@ EfficientNet-B4 at 512×512 with batch_size=20 uses ~5.8GB. Solutions if you hit
 
 ---
 
-**Last Updated:** 2026-02-22
-**Status:** Phase 1 (Training) — Complete
+**Last Updated:** March 2026
+**Status:** Phase 2 (Microservices + UI) — Complete

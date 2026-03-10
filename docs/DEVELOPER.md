@@ -79,15 +79,24 @@ EOF
 
 ## Project Structure
 
+The project follows a Dockerized Microservices architecture:
+
 ```
-retinal-disease-classifier/
-├── config.py              # Configuration (paths, hyperparameters)
-├── model.py               # EfficientNet-B4 architecture
-├── dataset.py             # Data loading & preprocessing
-├── train.py               # Training script
-├── inference.py           # Inference script
+Team-B-Backend/
+├── docker-compose.yml           # Run everything natively via Docker Compose
+├── nginx/                       # Nginx proxy mapping :80 requests -> microservices
+├── services/
+│   ├── frontend/                # React SPA source code
+│   ├── backend/                 # FastAPI CPU Gateway & Image Validation
+│   └── model/                   # PyTorch GPU Inference Microservice
 │
-├── pytorch_model.bin      # Trained weights (~75 MB)
+├── config.py              # Root-level configuration (paths, hyperparameters)
+├── model.py               # EfficientNet-B4 architecture definition
+├── dataset.py             # Data loading & preprocessing tools
+├── train.py               # ML Training script
+├── inference.py           # ML Inference script for CLI usage
+│
+├── pytorch_model.bin      # Trained weights (~75 MB) - Cached by HuggingFace
 ├── config.json            # Model config for HF
 │
 ├── USER_GUIDE.md          # User documentation
@@ -100,6 +109,8 @@ retinal-disease-classifier/
 │   └── plots/             # loss curves
 │
 └── docs/                  # Additional documentation
+    ├── SYSTEM_ARCHITECTURE.md
+    ├── VALIDATION_SERVICE.md
     ├── SETUP.md
     ├── ARCHITECTURE.md
     ├── TRAINING.md

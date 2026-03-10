@@ -19,62 +19,63 @@ Complete guide for backend developers integrating the retinal disease classifier
 
 ## Architecture Overview
 
+The system has been refactored from a monolithic API into a Dockerized Microservices architecture:
+
 ```
 ┌─────────────────────┐
-│   Frontend/Client   │
+│   Client / Browser  │
 └──────────┬──────────┘
-           │ HTTP
+           │ HTTP (:80)
            ▼
 ┌─────────────────────┐
-│   API Server        │ (FastAPI/Flask)
+│ Nginx Reverse Proxy │ (Routes /api to Backend)
+└──────────┬──────────┘
+           │ HTTP (:8000)
+           ▼
+┌─────────────────────┐
+│   Backend Gateway   │ (FastAPI - Validation & Logic)
+└──────────┬──────────┘
+           │ HTTP (:8001)
+           ▼
+┌─────────────────────┐
+│   Model Service     │ (PyTorch/GPU - Inference Only)
 └──────────┬──────────┘
            │
            ▼
 ┌─────────────────────┐
-│   Model Inference   │ (PyTorch)
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│   GPU/CPU Device    │
+│   GPU Device (CUDA) │
 └─────────────────────┘
 ```
 
 ---
 
-## FastAPI Implementation
+## Microservices Implementation
 
-### Installation
+### 1. Nginx Proxy (`nginx/nginx.conf`)
 
-```bash
-pip install fastapi uvicorn python-multipart pillow torch torchvision albumentations
-```
+Directs all traffic:
+- `/api/` ➔ Backend Gateway (`:8000`)
+- `/` ➔ React Frontend (`:80`)
 
-### Basic Server
+### 2. Backend API Gateway (`services/backend/`)
 
-```python
-# app.py
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import torch
-import numpy as np
-from PIL import Image
-import io
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
+A CPU-only FastAPI service. It receives the HTTP requests, runs the lightweight **Validation Service**, and orchestrates HTTP calls to the GPU service. 
 
-# Load model once at startup
-app = FastAPI(title="Retinal Disease Classifier API", version="1.0")
+**Key Responsibilities:**
+- Request parsing & CORS protection
+- Blocking non-fundus images heuristics (`validation_service.py`)
+- Generating Risk Advisory text (`advisory_service.py`)
 
-# CORS configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+### 3. Model Inference Service (`services/model/`)
+
+A dedicated GPU container running FastAPI and PyTorch. 
+
+**Key Responsibilities:**
+- Runs a *single worker* to avoid GPU OOM conflicts.
+- Loads the EfficientNet-B4 weights into VRAM.
+- Dedicated strictly to PyTorch tensor transformations and model prediction.
+
+*(The previous monolithic code examples below are retained for legacy integration reference if you wish to build a bespoke integration).*
 
 # Global model
 MODEL = None
@@ -489,47 +490,41 @@ if not valid:
 
 ## Deployment
 
-### Docker
+### Docker Compose (Recommended)
 
-```dockerfile
-FROM python:3.10
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-COPY . .
-
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-Build & Run:
-```bash
-docker build -t retinal-classifier .
-docker run -p 8000:8000 --gpus all retinal-classifier
-```
-
-### Docker Compose
+The entire architecture is configured in `docker-compose.yml` to automatically handle port routing, environment variable injection, and GPU provisioning.
 
 ```yaml
-version: '3'
+# Extract from docker-compose.yml
 services:
-  api:
-    build: .
-    ports:
-      - "8000:8000"
-    environment:
-      - CUDA_VISIBLE_DEVICES=0
-    volumes:
-      - ./pytorch_model.bin:/app/pytorch_model.bin
+  model-service:
+    build:
+      context: .
+      dockerfile: services/model/Dockerfile
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              count: all
               capabilities: [gpu]
+
+  backend:
+    build:
+      context: .
+      dockerfile: services/backend/Dockerfile
+    environment:
+      - MODEL_SERVICE_URL=http://model-service:8001
+    
+  nginx:
+    # Routes to the backend
+    ports:
+      - "80:80"
+```
+
+Build & Run:
+```bash
+docker compose up --build -d
 ```
 
 ---
