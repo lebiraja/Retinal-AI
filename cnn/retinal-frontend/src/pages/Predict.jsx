@@ -26,7 +26,7 @@ export default function Predict() {
             <div>
               <h1 className="text-2xl font-black text-foreground">Image Analysis</h1>
               <p className="text-sm text-muted-foreground">
-                Upload a retinal fundus image for AI-powered disease screening
+                Upload an eye image for AI-powered disease screening
               </p>
             </div>
           </div>

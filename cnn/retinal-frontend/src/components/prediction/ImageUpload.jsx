@@ -160,7 +160,7 @@ export function ImageUpload({ onSubmit, isLoading }) {
                         <p className="text-sm font-medium text-foreground">
                           {isDragActive ? 'Drop image here' : 'Drag & drop or click to browse'}
                         </p>
-                        <p className="text-xs text-muted-foreground mt-1">JPG or PNG • Max 5 MB</p>
+                        <p className="text-xs text-muted-foreground mt-1">JPG, PNG, WEBP • Max 20 MB</p>
                       </div>
                     </div>
                   </motion.div>
@@ -261,7 +261,7 @@ export function ImageUpload({ onSubmit, isLoading }) {
           <p className="text-xs text-muted-foreground leading-relaxed">
             {tab === 'camera'
               ? 'Position the retinal fundus image in front of the camera and press Capture Photo.'
-              : 'Accepted formats: JPEG, PNG. Maximum file size: 5 MB. Ensure the image is a clear retinal fundus photograph for best results.'}
+              : 'Accepted formats: JPEG, PNG, WEBP and more. Maximum file size: 20 MB. Upload any eye image for AI-powered analysis.'}
           </p>
         </div>
       </CardContent>

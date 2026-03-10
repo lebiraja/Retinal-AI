@@ -23,10 +23,10 @@ const steps = [
   {
     step: '01',
     icon: Upload,
-    title: 'Upload a Fundus Image',
+    title: 'Upload an Eye Image',
     description:
-      'Start by uploading a retinal fundus photograph taken with a standard fundus camera. Accepted formats include JPEG, PNG, and BMP (up to 10 MB). The image should be a clear, centred view of the retina.',
-    details: ['JPEG / PNG / BMP supported', 'Max file size: 10 MB', 'Drag-and-drop or click to upload'],
+      'Start by uploading any eye photograph — a retinal fundus image, OCT scan, or a clear close-up photo of the eye. Most common image formats are accepted (up to 20 MB).',
+    details: ['JPEG / PNG / WEBP and more', 'Max file size: 20 MB', 'Drag-and-drop or click to upload'],
     color: 'bg-blue-500/10 text-blue-500',
     border: 'border-blue-500/20',
   },
@@ -298,7 +298,7 @@ export default function HowItWorks() {
               <div>
                 <h3 className="text-2xl font-black text-foreground">Ready to try it?</h3>
                 <p className="text-muted-foreground mt-1">
-                  Upload a fundus image and see the full pipeline in action.
+                  Upload an eye image and see the full pipeline in action.
                 </p>
               </div>
               <Link to="/predict" className="shrink-0">

@@ -103,8 +103,13 @@ services:
       - BACKEND_WORKERS=2
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
       - DEFAULT_THRESHOLD=${DEFAULT_THRESHOLD:-0.5}
-      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-10}
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-20}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      # VLM (Featherless / Kimi-K2.5) — used for image gating and analysis
+      - FEATHERLESS_API_KEY=${FEATHERLESS_API_KEY}
+      - FEATHERLESS_BASE_URL=${FEATHERLESS_BASE_URL:-https://api.featherless.ai/v1}
+      - FEATHERLESS_MODEL=${FEATHERLESS_MODEL:-moonshotai/Kimi-K2.5}
+      - FEATHERLESS_TEMPERATURE=${FEATHERLESS_TEMPERATURE:-0.2}
 
     expose:
       - "8000"

@@ -79,7 +79,7 @@ const features = [
 ];
 
 const pipeline = [
-  { step: '01', icon: Upload, title: 'Upload Image', desc: 'Drop a JPEG / PNG fundus photo up to 10 MB.' },
+  { step: '01', icon: Upload, title: 'Upload Image', desc: 'Upload any eye image (fundus, OCT, close-up) up to 20 MB.' },
   { step: '02', icon: Cpu,    title: 'AI Inference',  desc: 'CNN processes the image at 384 × 384 with ImageNet normalisation.' },
   { step: '03', icon: FileText, title: 'Get Results', desc: 'Receive 45-class probabilities, risk level, and a clinical advisory.' },
 ];
@@ -145,7 +145,7 @@ export default function Landing() {
               transition={{ delay: 0.2, duration: 0.5 }}
               className="text-lg text-muted-foreground leading-relaxed max-w-2xl mx-auto"
             >
-              Upload a retinal fundus photograph and get instant AI-powered disease
+              Upload any eye image and get instant AI-powered disease
               predictions across 45 conditions — with confidence scores, risk levels,
               and clinical advisory notes.
             </motion.p>
@@ -339,7 +339,7 @@ export default function Landing() {
                     Ready to screen?
                   </h3>
                   <p className="text-muted-foreground max-w-sm">
-                    Upload a fundus image now and receive a full AI-powered retinal
+                    Upload any eye image now and receive a full AI-powered retinal
                     disease screening report in seconds.
                   </p>
                   <p className="text-xs text-muted-foreground/50">

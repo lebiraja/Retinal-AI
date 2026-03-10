@@ -1,11 +1,16 @@
 """
 Backend API — prediction endpoints.
 
-Routes:
-    POST /predict         — single-image classification
-    POST /predict-batch   — multi-image batch (up to MAX_BATCH_SIZE)
-    GET  /health          — liveness + model service reachability
-    GET  /info            — model metadata
+Pipeline for each image:
+  1. Size check (max upload limit)
+  2. VLM stage 1 — silent eye-image gate
+  3. Model inference (EfficientNet-B4)
+  4. Advisory generation (risk level + base text)
+  5. VLM stage 2 — personalised analysis overlaid on advisory
+  6. Response
+
+The VLM integration is completely transparent to the user.
+Any image format can be uploaded; the VLM decides whether it is retinal.
 """
 
 from __future__ import annotations
@@ -16,10 +21,8 @@ import time
 import uuid
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import JSONResponse
 
 from services.backend.src.config import (
-    ALLOWED_MIME_TYPES,
     ARCHITECTURE,
     BEST_AUC,
     BEST_EPOCH,
@@ -36,6 +39,7 @@ from services.backend.src.config import (
     NUM_CLASSES,
     TRAIN_LOSS,
     VAL_LOSS,
+    DISEASE_FULL_NAMES,
 )
 from services.backend.src.schemas import (
     BatchPredictionResponse,
@@ -47,15 +51,12 @@ from services.backend.src.schemas import (
 from services.backend.src.services.advisory_service import generate_advisory
 from services.backend.src.services.model_client import ModelClient
 from services.backend.src.services.validation_service import (
-    validate_fundus_image,
     validate_upload_size,
-    validate_upload_type,
 )
+from services.backend.src.services import vlm_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Retinal Classifier"])
-
-# ── Helpers ────────────────────────────────────────────────────────────────────
 
 
 def _new_request_id() -> str:
@@ -69,17 +70,25 @@ async def _process_single_image(
 ) -> PredictionResponse:
     """
     Full pipeline for one image:
-      validate → read bytes → call model service → generate advisory → build response.
+      size check → VLM gate → model inference → advisory → VLM analysis → response.
     """
     t_start = time.perf_counter()
 
-    # --- Validation ---
-    validate_upload_type(image.content_type or "", ALLOWED_MIME_TYPES)
-    file_bytes = await image.read()
+    # ── 1. Read bytes and validate size only ──────────────────────────────────
+    file_bytes   = await image.read()
+    content_type = image.content_type or "image/jpeg"
     validate_upload_size(file_bytes, image.filename or "upload", MAX_FILE_SIZE_MB)
-    validate_fundus_image(file_bytes, image.filename or "upload")
 
-    # --- Model inference (via HTTP to model service) ---
+    # ── 2. VLM stage 1 — silent eye-image gate (log only, non-blocking) ─────
+    is_eye = await vlm_service.check_is_eye_image(file_bytes, content_type)
+    if not is_eye:
+        logger.info(
+            "[%s] VLM gate returned non-eye for file=%s — proceeding anyway",
+            request_id,
+            image.filename,
+        )
+
+    # ── 3. Model inference ────────────────────────────────────────────────────
     try:
         inference = await ModelClient.infer(file_bytes, threshold=threshold)
     except Exception as exc:
@@ -92,16 +101,29 @@ async def _process_single_image(
             ),
         ) from exc
 
-    # Only keep predictions above the threshold (model service already filters,
-    # but we reconstruct from probabilities to be explicit)
     predictions_above_threshold: dict[str, float] = {
         label: prob
         for label, prob in inference["probabilities"].items()
         if label in inference["detected_labels"]
     }
 
-    # --- Advisory generation ---
+    # ── 4. Structure advisory (risk level + base text) ────────────────────────
     advisory_result = generate_advisory(predictions_above_threshold)
+
+    # ── 5. VLM stage 2 — personalised image-grounded analysis ────────────────
+    disease_full_names = [
+        DISEASE_FULL_NAMES.get(d, d)
+        for d in advisory_result["detected_diseases"]
+    ]
+    vlm_analysis = await vlm_service.generate_analysis(
+        image_bytes=file_bytes,
+        content_type=content_type,
+        disease_full_names=disease_full_names,
+        risk_level=advisory_result["risk_level"],
+        probabilities=predictions_above_threshold,
+    )
+    # Use VLM text when available; fall back to static advisory on failure
+    final_advisory = vlm_analysis if vlm_analysis else advisory_result["advisory"]
 
     elapsed_ms = (time.perf_counter() - t_start) * 1000.0
 
@@ -127,22 +149,22 @@ async def _process_single_image(
         top_prediction=advisory_result["top_prediction"],
         confidence=advisory_result["confidence"],
         risk_level=advisory_result["risk_level"],
-        advisory=advisory_result["advisory"],
+        advisory=final_advisory,
         elapsed_ms=round(elapsed_ms, 2),
         threshold=threshold,
     )
 
 
-# ── POST /predict ──────────────────────────────────────────────────────────────
+# ── POST /predict ────────────────────────────────────────────────────────────────────
 
 @router.post(
     "/predict",
     response_model=PredictionResponse,
-    summary="Classify retinal diseases in a single fundus image",
+    summary="Classify retinal diseases in an eye image",
     description=(
-        "Upload a single fundus photograph (JPEG/PNG, max 10 MB). "
+        "Upload a retinal or eye photograph (any common image format, max 20 MB). "
         "Returns probabilities for 45 disease classes, an overall risk level, "
-        "and a non-diagnostic advisory message.\n\n"
+        "and a personalised advisory message.\n\n"
         "**⚠ Not a medical diagnostic device. "
         "Always consult a qualified ophthalmologist.**"
     ),
@@ -150,7 +172,7 @@ async def _process_single_image(
 async def predict(
     request: Request,
     image: UploadFile = File(
-        ..., description="Fundus image (JPEG/PNG/BMP, max 10 MB)"
+        ..., description="Eye or retinal image (any format, max 20 MB)"
     ),
     threshold: float = Query(
         default=DEFAULT_THRESHOLD,
@@ -166,14 +188,14 @@ async def predict(
     return await _process_single_image(image, threshold, req_id)
 
 
-# ── POST /predict-batch ────────────────────────────────────────────────────────
+# ── POST /predict-batch ────────────────────────────────────────────────────────────────────
 
 @router.post(
     "/predict-batch",
     response_model=BatchPredictionResponse,
-    summary="Classify diseases in multiple fundus images",
+    summary="Classify diseases in multiple eye images",
     description=(
-        f"Upload up to {MAX_BATCH_SIZE} fundus images in one request. "
+        f"Upload up to {MAX_BATCH_SIZE} eye images in one request. "
         "Each image is processed independently with the same threshold.\n\n"
         "**⚠ Not a medical diagnostic device.**"
     ),
@@ -181,7 +203,7 @@ async def predict(
 async def predict_batch(
     request: Request,
     images: list[UploadFile] = File(
-        ..., description=f"List of fundus images (max {MAX_BATCH_SIZE} per request)"
+        ..., description=f"List of eye images (max {MAX_BATCH_SIZE} per request)"
     ),
     threshold: float = Query(
         default=DEFAULT_THRESHOLD,
@@ -197,17 +219,15 @@ async def predict_batch(
             detail=f"Maximum {MAX_BATCH_SIZE} images per batch request.",
         )
 
-    req_id    = _new_request_id()
-    t_start   = time.perf_counter()
+    req_id  = _new_request_id()
+    t_start = time.perf_counter()
 
-    # Process all images concurrently — model service handles sequencing on GPU
     tasks = [
         _process_single_image(img, threshold, f"{req_id}-{i}")
         for i, img in enumerate(images)
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Surface the first hard error (if any); partial failures return 502
     responses: list[PredictionResponse] = []
     for i, result in enumerate(results):
         if isinstance(result, Exception):
@@ -219,9 +239,7 @@ async def predict_batch(
         responses.append(result)  # type: ignore[arg-type]
 
     total_ms = (time.perf_counter() - t_start) * 1000.0
-    logger.info(
-        "[%s] predict-batch | n=%d | %.1f ms", req_id, len(images), total_ms
-    )
+    logger.info("[%s] predict-batch | n=%d | %.1f ms", req_id, len(images), total_ms)
 
     return BatchPredictionResponse(
         results=responses,
@@ -230,7 +248,7 @@ async def predict_batch(
     )
 
 
-# ── GET /health ────────────────────────────────────────────────────────────────
+# ── GET /health ────────────────────────────────────────────────────────────────────────
 
 @router.get(
     "/health",
@@ -247,7 +265,7 @@ async def health() -> HealthResponse:
     )
 
 
-# ── GET /info ──────────────────────────────────────────────────────────────────
+# ── GET /info ────────────────────────────────────────────────────────────────────────
 
 @router.get(
     "/info",

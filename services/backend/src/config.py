@@ -29,13 +29,16 @@ CORS_ORIGINS: Final[list[str]] = [
 ]
 
 # ── Upload limits ──────────────────────────────────────────────────────────────
-MAX_FILE_SIZE_MB: Final[int] = int(os.getenv("MAX_FILE_SIZE_MB", "10"))
+MAX_FILE_SIZE_MB: Final[int] = int(os.getenv("MAX_FILE_SIZE_MB", "20"))
 MAX_BATCH_SIZE: Final[int] = int(os.getenv("MAX_BATCH_SIZE", "10"))
 
+# Accept any common image format — VLM handles non-eye image rejection
 ALLOWED_MIME_TYPES: Final[FrozenSet[str]] = frozenset(
     os.getenv(
         "ALLOWED_MIME_TYPES",
-        "image/jpeg,image/jpg,image/png,image/bmp,image/tiff",
+        "image/jpeg,image/jpg,image/png,image/bmp,image/tiff,"
+        "image/webp,image/gif,image/heic,image/heif,image/avif,"
+        "image/svg+xml,image/x-png,image/pjpeg,application/octet-stream",
     ).split(",")
 )
 
@@ -61,7 +64,11 @@ HOST:      Final[str] = os.getenv("BACKEND_HOST", "0.0.0.0")
 PORT:      Final[int] = int(os.getenv("BACKEND_PORT", "8000"))
 WORKERS:   Final[int] = int(os.getenv("BACKEND_WORKERS", "2"))
 LOG_LEVEL: Final[str] = os.getenv("LOG_LEVEL", "info")
-
+# ── Vision-Language Model (Featherless / Kimi-K2.5) ───────────────────────────────
+FEATHERLESS_API_KEY:  Final[str]   = os.getenv("FEATHERLESS_API_KEY",  "")
+FEATHERLESS_BASE_URL: Final[str]   = os.getenv("FEATHERLESS_BASE_URL", "https://api.featherless.ai/v1")
+FEATHERLESS_MODEL:    Final[str]   = os.getenv("FEATHERLESS_MODEL",    "moonshotai/Kimi-K2.5")
+FEATHERLESS_TEMPERATURE: Final[float] = float(os.getenv("FEATHERLESS_TEMPERATURE", "0.2"))
 # ── Disease labels — ORDER must match model output indices ─────────────────────
 DISEASE_LABELS: Final[list[str]] = [
     "DR", "ARMD", "MH", "DN", "MYA", "BRVO", "TSLN", "ERM", "LS", "MS",
