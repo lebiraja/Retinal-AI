@@ -5,7 +5,7 @@ import axios from 'axios';
  * Centralized HTTP client for the entire app
  */
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:7002',
   timeout: 30000,
   headers: {
     Accept: 'application/json',

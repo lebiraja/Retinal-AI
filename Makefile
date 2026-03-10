@@ -116,8 +116,8 @@ health:
 	@curl -s http://localhost/api/health | python3 -m json.tool
 	@echo ""
 	@echo "==> model service (direct)"
-	@curl -s http://localhost:8001/health | python3 -m json.tool || \
-		echo "(port 8001 not exposed in production mode)"
+@curl -s http://localhost:7001/health | python3 -m json.tool || \
+			echo "(port 7001 not exposed in production mode)"
 
 # ── Tests ──────────────────────────────────────────────────────────────────────
 test:

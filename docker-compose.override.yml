@@ -21,7 +21,7 @@ services:
       - ./services/model/src:/app/services/model/src:ro
       - hf-cache:/app/.cache/huggingface
     ports:
-      - "8001:8001"   # expose for direct debugging
+      - "7001:8001"   # expose for direct debugging
 
   backend:
     environment:
@@ -30,16 +30,16 @@ services:
     volumes:
       - ./services/backend/src:/app/services/backend/src:ro
     ports:
-      - "8000:8000"   # expose for curl / Swagger testing
+      - "7002:8000"   # expose for curl / Swagger testing
 
   frontend:
     # In dev, rebuild the frontend with localhost API URL
     build:
       args:
-        VITE_API_URL: http://localhost:8000
+        VITE_API_URL: http://localhost:7002
     ports:
-      - "3000:80"   # access frontend directly on localhost:3000
+      - "7003:80"   # access frontend directly on localhost:7003
 
   nginx:
     ports:
-      - "80:80"
+      - "7000:80"
