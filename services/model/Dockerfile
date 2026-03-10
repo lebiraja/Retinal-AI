@@ -74,8 +74,8 @@ COPY services/model/src ./services/model/src
 # Ensure the package hierarchy is importable
 RUN touch ./services/__init__.py ./services/model/__init__.py
 
-# Create cache directory and hand ownership to appuser
-RUN mkdir -p /app/.cache/huggingface \
+# Create cache directories and hand ownership to appuser
+RUN mkdir -p /app/.cache/huggingface /app/.cache/torch \
     && chown -R appuser:appgroup /app
 
 # ── Environment variables (overridable at runtime) ────────────────────────────
@@ -83,6 +83,7 @@ ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV HF_HOME=/app/.cache/huggingface
+ENV TORCH_HOME=/app/.cache/torch
 ENV MODEL_SERVICE_HOST=0.0.0.0
 ENV MODEL_SERVICE_PORT=8001
 ENV LOG_LEVEL=info

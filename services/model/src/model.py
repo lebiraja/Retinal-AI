@@ -20,19 +20,24 @@ import torchvision.models as models
 from services.model.src import config
 
 
-def build_model(num_classes: int = config.NUM_CLASSES) -> nn.Module:
+def build_model(
+    num_classes: int = config.NUM_CLASSES,
+    pretrained: bool = True,
+) -> nn.Module:
     """
     Construct an EfficientNet-B4 with a custom classification head.
 
     Args:
         num_classes: Number of output classes (default: 45).
+        pretrained:  Load ImageNet backbone weights (True for training;
+                     False when loading a fine-tuned checkpoint — avoids
+                     an unnecessary network download).
 
     Returns:
-        Initialised model with ImageNet-pretrained features and a fresh head.
+        Initialised model on CPU.
     """
-    model = models.efficientnet_b4(
-        weights=models.EfficientNet_B4_Weights.IMAGENET1K_V1
-    )
+    weights = models.EfficientNet_B4_Weights.IMAGENET1K_V1 if pretrained else None
+    model = models.efficientnet_b4(weights=weights)
     in_features: int = model.classifier[1].in_features  # 1792
     model.classifier = nn.Sequential(
         nn.Dropout(p=0.4),
@@ -74,7 +79,10 @@ def load_checkpoint(checkpoint_path: str, device: torch.device) -> nn.Module:
     logger = logging.getLogger(__name__)
     logger.info("Checkpoint loaded — epoch=%s | mean_auc=%.4f", epoch, mean_auc)
 
-    model = build_model()
+    # Build with weights=None — ImageNet init is not needed here because
+    # load_state_dict() below will overwrite every parameter from our checkpoint.
+    # This avoids a network download and the TORCH_HOME permission issue.
+    model = build_model(pretrained=False)
     model.load_state_dict(state_dict, strict=True)
     model.to(device)
     model.eval()
