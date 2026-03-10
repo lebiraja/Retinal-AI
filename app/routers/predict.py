@@ -80,6 +80,37 @@ def _validate_threshold(threshold: float) -> None:
         )
 
 
+def _validate_fundus_image(file_bytes: bytes) -> None:
+    """Raise HTTP 400 if the image lacks the characteristic black aperture ring."""
+    import io
+    from PIL import Image
+    import numpy as np
+
+    try:
+        img = Image.open(io.BytesIO(file_bytes)).convert("L")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid image file.")
+
+    img_arr = np.array(img)
+    # Count pixels that are very dark (e.g. intensity < 15 out of 255)
+    dark_pixels = np.sum(img_arr < 15)
+    total_pixels = img_arr.size
+    ratio = dark_pixels / total_pixels
+    min_required = 0.05
+
+    if ratio < min_required:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This does not appear to be a retinal fundus photograph. "
+                "Please upload a genuine fundus image taken with an ophthalmoscope or fundus camera. "
+                f"Reason: no dark circular border detected (dark pixel ratio = {ratio:.3f}, minimum required = {min_required}). "
+                "Fundus cameras produce a characteristic black aperture ring around the retinal image. "
+                "Documents, selfies, and general photos lack this."
+            )
+        )
+
+
 # ── POST /predict ─────────────────────────────────────────────────────────────
 
 @router.post(
@@ -108,6 +139,7 @@ async def predict(
     _validate_upload(image)
     file_bytes = await image.read()
     _validate_bytes(file_bytes, image.filename or "upload")
+    _validate_fundus_image(file_bytes)
 
     try:
         predictions, elapsed_ms = run_inference(file_bytes, threshold=threshold)
@@ -177,6 +209,7 @@ async def predict_batch(
         _validate_upload(image)
         file_bytes = await image.read()
         _validate_bytes(file_bytes, image.filename or "upload")
+        _validate_fundus_image(file_bytes)
 
         try:
             predictions, elapsed_ms = run_inference(file_bytes, threshold=threshold)
