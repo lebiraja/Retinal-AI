@@ -1,0 +1,17 @@
+# ── Web framework ──────────────────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+
+# ── Data validation ────────────────────────────────────────────────────────────
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+
+# ── HTTP client (for calling model service) ────────────────────────────────────
+httpx[http2]>=0.27.0
+
+# ── Image validation (lightweight — no torch) ──────────────────────────────────
+Pillow>=10.3.0
+numpy>=1.26.0
+
+# ── Utilities ──────────────────────────────────────────────────────────────────
+python-multipart>=0.0.9

@@ -1,0 +1,35 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  CPU-only override for local testing (no NVIDIA GPU required)
+#
+#  Usage:
+#    docker compose -f docker-compose.yml -f docker-compose.cpu.yml up --build
+#
+#  Or with the shorthand alias in the Makefile:
+#    make up-cpu
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  model-service:
+    build:
+      context: .
+      dockerfile: services/model/Dockerfile.cpu
+    image: retinal/model-service:cpu
+
+    # Override: no GPU devices needed
+    deploy:
+      resources:
+        reservations:
+          devices: []
+
+    environment:
+      - HF_MODEL_REPO=${HF_MODEL_REPO:-lebiraja/retinal-disease-classifier}
+      - HF_MODEL_FILE=${HF_MODEL_FILE:-pytorch_model.bin}
+      - MODEL_SERVICE_HOST=0.0.0.0
+      - MODEL_SERVICE_PORT=8001
+      - MODEL_SERVICE_WORKERS=1
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
+    healthcheck:
+      # CPU inference is slower — give it more time to warm up
+      start_period: 240s

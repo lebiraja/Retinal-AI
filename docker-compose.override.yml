@@ -1,0 +1,45 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  docker-compose.override.yml — Development overrides
+#
+#  This file is automatically merged with docker-compose.yml when you run
+#  `docker compose up` in development.  It adds:
+#    • Volume mounts for hot-reload (no rebuild needed for Python changes)
+#    • Exposed ports for direct service access during debugging
+#    • More verbose logging
+#
+#  For production, use:
+#    docker compose -f docker-compose.yml up --build -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  model-service:
+    environment:
+      - LOG_LEVEL=debug
+    # Mount source so code changes are picked up without rebuilding
+    volumes:
+      - ./services/model/src:/app/services/model/src:ro
+      - hf-cache:/app/.cache/huggingface
+    ports:
+      - "8001:8001"   # expose for direct debugging
+
+  backend:
+    environment:
+      - LOG_LEVEL=debug
+      - CORS_ORIGINS=*
+    volumes:
+      - ./services/backend/src:/app/services/backend/src:ro
+    ports:
+      - "8000:8000"   # expose for curl / Swagger testing
+
+  frontend:
+    # In dev, rebuild the frontend with localhost API URL
+    build:
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "3000:80"   # access frontend directly on localhost:3000
+
+  nginx:
+    ports:
+      - "80:80"

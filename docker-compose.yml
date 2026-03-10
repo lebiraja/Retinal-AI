@@ -1,0 +1,201 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Retinal Disease Classifier — Production Docker Compose
+#
+#  Services:
+#    model-service  — GPU inference (EfficientNet-B4)   [internal, port 8001]
+#    backend        — API gateway (FastAPI, no GPU)      [internal, port 8000]
+#    frontend       — React SPA served by Nginx          [internal, port 80]
+#    nginx          — Reverse proxy / public entry point [public,   port 80]
+#
+#  Networking:
+#    Public-facing : nginx (port 80 → host)
+#    Internal only : model-service, backend, frontend (app-network)
+#
+#  GPU:
+#    model-service uses all available NVIDIA GPUs.
+#    Requires nvidia-container-toolkit on the host.
+#
+#  Usage:
+#    docker compose up --build          # build & start all services
+#    docker compose up --build -d       # detached (production)
+#    docker compose logs -f model       # tail GPU inference logs
+#    docker compose down                # stop and remove containers
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── GPU Inference Microservice ─────────────────────────────────────────────
+  model-service:
+    build:
+      context: .
+      dockerfile: services/model/Dockerfile
+    image: retinal/model-service:latest
+    container_name: retinal-model-service
+    restart: unless-stopped
+    networks:
+      - app-network
+
+    # ── GPU resource allocation ─────────────────────────────────────────────
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all          # use every available GPU (typically 1)
+              capabilities: [gpu]
+
+    environment:
+      - HF_MODEL_REPO=${HF_MODEL_REPO:-lebiraja/retinal-disease-classifier}
+      - HF_MODEL_FILE=${HF_MODEL_FILE:-pytorch_model.bin}
+      - MODEL_SERVICE_HOST=0.0.0.0
+      - MODEL_SERVICE_PORT=8001
+      - MODEL_SERVICE_WORKERS=1     # single worker is correct for GPU (avoids multi-GPU conflicts)
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+      # Optional: mount a pre-downloaded checkpoint to skip HuggingFace download
+      # - MODEL_CHECKPOINT_PATH=/checkpoints/best_model.pt
+
+    volumes:
+      # Persist HuggingFace model cache across container restarts
+      - hf-cache:/app/.cache/huggingface
+      # Optional: mount local checkpoint to skip download
+      # - ./outputs/checkpoints:/checkpoints:ro
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 180s    # allow up to 3 min for first-time HF download
+      retries: 5
+
+    # Do NOT expose port 8001 externally — only accessible via app-network
+    expose:
+      - "8001"
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+
+  # ── Backend API Gateway ────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: services/backend/Dockerfile
+    image: retinal/backend:latest
+    container_name: retinal-backend
+    restart: unless-stopped
+    networks:
+      - app-network
+    depends_on:
+      model-service:
+        condition: service_healthy
+
+    environment:
+      - MODEL_SERVICE_URL=http://model-service:8001
+      - MODEL_CONNECT_TIMEOUT=5.0
+      - MODEL_READ_TIMEOUT=90.0
+      - MODEL_MAX_RETRIES=2
+      - BACKEND_HOST=0.0.0.0
+      - BACKEND_PORT=8000
+      - BACKEND_WORKERS=2
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - DEFAULT_THRESHOLD=${DEFAULT_THRESHOLD:-0.5}
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-10}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
+    expose:
+      - "8000"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+
+  # ── React Frontend ─────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: services/frontend/Dockerfile
+      args:
+        # In production, all API calls go through Nginx at /api
+        VITE_API_URL: /api
+    image: retinal/frontend:latest
+    container_name: retinal-frontend
+    restart: unless-stopped
+    networks:
+      - app-network
+
+    expose:
+      - "80"
+
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/healthz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+
+  # ── Nginx Reverse Proxy (public entry point) ───────────────────────────────
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    image: retinal/nginx:latest
+    container_name: retinal-nginx
+    restart: unless-stopped
+    networks:
+      - app-network
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+
+    ports:
+      - "${HTTP_PORT:-80}:80"
+
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/nginx-health"]
+      interval: 20s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+
+# ── Volumes ────────────────────────────────────────────────────────────────────
+volumes:
+  hf-cache:
+    driver: local
+    name: retinal_hf_cache   # named volume persists across `docker compose down`
+
+
+# ── Networks ───────────────────────────────────────────────────────────────────
+networks:
+  app-network:
+    driver: bridge
+    name: retinal_app_network

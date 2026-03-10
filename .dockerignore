@@ -1,0 +1,76 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  .dockerignore — Exclude files from Docker build context
+#
+#  Keeps the build context lean:
+#  • No dataset files (hundreds of MB)
+#  • No Python cache / compiled bytecode
+#  • No Git history
+#  • No local environment files
+#  • No Node modules (installed fresh in the build stage)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Git ───────────────────────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+
+# ── Python bytecode & cache ───────────────────────────────────────────────────
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache
+**/*.egg-info
+**/.eggs
+dist/
+build/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv
+venv
+env
+.env
+
+# ── Dataset (huge, only needed for training not inference) ────────────────────
+dataset/
+
+# ── Jupyter notebooks ─────────────────────────────────────────────────────────
+*.ipynb
+.ipynb_checkpoints
+
+# ── Node.js (installed fresh in Docker build stage) ──────────────────────────
+cnn/retinal-frontend/node_modules
+cnn/retinal-frontend/dist
+
+# ── IDE / editor ──────────────────────────────────────────────────────────────
+.vscode
+.idea
+*.swp
+*.swo
+*.DS_Store
+Thumbs.db
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+outputs/logs/
+outputs/plots/
+*.log
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+secrets/
+
+# ── Docker files (not needed inside the container) ────────────────────────────
+docker-compose*.yml
+Makefile
+
+# ── Documentation only ────────────────────────────────────────────────────────
+docs/
+CHANGELOG_UPDATE.md
+README.md
+DOCUMENTATION.md
+
+# ── Tests ─────────────────────────────────────────────────────────────────────
+tests/
+test_*.py
