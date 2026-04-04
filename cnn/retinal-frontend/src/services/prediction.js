@@ -55,11 +55,13 @@ function transformPrediction(raw) {
  * @returns {Promise<Object>} transformed prediction response
  */
 export async function predictImage(imageFile, threshold = 0.5) {
+  const safeThreshold = Number.isFinite(threshold) ? threshold : 0.5;
+
   const formData = new FormData();
   formData.append('image', imageFile);
 
   const { data } = await api.post('/predict', formData, {
-    params: { threshold },
+    params: { threshold: safeThreshold },
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 

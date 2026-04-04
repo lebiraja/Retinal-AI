@@ -24,7 +24,51 @@
 
 services:
 
-  # ── GPU Inference Microservice ─────────────────────────────────────────────
+  # ── Ollama VLM Service ───────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: retinal-ollama
+    restart: unless-stopped
+    networks:
+      - app-network
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - ollama-cache:/root/.ollama
+    expose:
+      - "11434"
+    ports:
+      - "11434:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 20s
+      timeout: 10s
+      start_period: 20s
+      retries: 5
+
+  # ── Ollama Model Pull (init container) ──────────────────────────────────
+  #  Ensures the VLM model is downloaded before the backend starts.
+  #  Runs once and exits; backend depends on its successful completion.
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: retinal-ollama-pull
+    restart: "no"
+    networks:
+      - app-network
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        echo "Pulling VLM model: ${OLLAMA_MODEL:-gemma4:e2b} ..."
+        OLLAMA_HOST=http://ollama:11434 ollama pull ${OLLAMA_MODEL:-gemma4:e2b}
+        echo "Model pull complete."
+    environment:
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma4:e2b}
+
+
   model-service:
     build:
       context: .
@@ -92,6 +136,8 @@ services:
     depends_on:
       model-service:
         condition: service_healthy
+      ollama-pull:
+        condition: service_completed_successfully
 
     environment:
       - MODEL_SERVICE_URL=http://model-service:8001
@@ -105,11 +151,11 @@ services:
       - DEFAULT_THRESHOLD=${DEFAULT_THRESHOLD:-0.5}
       - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-20}
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      # VLM (Featherless / Kimi-K2.5) — used for image gating and analysis
-      - FEATHERLESS_API_KEY=${FEATHERLESS_API_KEY}
-      - FEATHERLESS_BASE_URL=${FEATHERLESS_BASE_URL:-https://api.featherless.ai/v1}
-      - FEATHERLESS_MODEL=${FEATHERLESS_MODEL:-moonshotai/Kimi-K2.5}
-      - FEATHERLESS_TEMPERATURE=${FEATHERLESS_TEMPERATURE:-0.2}
+      # VLM (Local Ollama) — used for image gating and personalised analysis
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma4:e2b}
+      - OLLAMA_TEMPERATURE=${OLLAMA_TEMPERATURE:-0.2}
+      - OLLAMA_TIMEOUT_S=${OLLAMA_TIMEOUT_S:-90.0}
 
     expose:
       - "8000"
@@ -197,6 +243,9 @@ volumes:
   hf-cache:
     driver: local
     name: retinal_hf_cache   # named volume persists across `docker compose down`
+  ollama-cache:
+    driver: local
+    name: retinal_ollama_cache
 
 
 # ── Networks ───────────────────────────────────────────────────────────────────

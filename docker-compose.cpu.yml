@@ -10,11 +10,49 @@
 
 services:
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: retinal-ollama
+    restart: unless-stopped
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - ollama-cache:/root/.ollama
+    expose:
+      - "11434"
+    ports:
+      - "11434:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 20s
+      timeout: 10s
+      start_period: 20s
+      retries: 5
+
+  # ── Ollama Model Pull (init container) ──────────────────────────────────
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: retinal-ollama-pull
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        echo "Pulling VLM model: ${OLLAMA_MODEL:-gemma4:e2b} ..."
+        OLLAMA_HOST=http://ollama:11434 ollama pull ${OLLAMA_MODEL:-gemma4:e2b}
+        echo "Model pull complete."
+    environment:
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma4:e2b}
+
   model-service:
     build:
       context: .
       dockerfile: services/model/Dockerfile.cpu
     image: retinal/model-service:cpu
+    restart: unless-stopped
 
     # Override: no GPU devices needed
     deploy:
@@ -33,3 +71,87 @@ services:
     healthcheck:
       # CPU inference is slower — give it more time to warm up
       start_period: 240s
+
+  backend:
+    build:
+      context: .
+      dockerfile: services/backend/Dockerfile
+    image: retinal/backend:latest
+    container_name: retinal-backend
+    restart: unless-stopped
+    depends_on:
+      model-service:
+        condition: service_healthy
+      ollama-pull:
+        condition: service_completed_successfully
+    environment:
+      - MODEL_SERVICE_URL=http://model-service:8001
+      - MODEL_CONNECT_TIMEOUT=5.0
+      - MODEL_READ_TIMEOUT=90.0
+      - MODEL_MAX_RETRIES=2
+      - BACKEND_HOST=0.0.0.0
+      - BACKEND_PORT=8000
+      - BACKEND_WORKERS=2
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - DEFAULT_THRESHOLD=${DEFAULT_THRESHOLD:-0.5}
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-20}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma4:e2b}
+      - OLLAMA_TEMPERATURE=${OLLAMA_TEMPERATURE:-0.2}
+      - OLLAMA_TIMEOUT_S=${OLLAMA_TIMEOUT_S:-90.0}
+      - VLM_GATE_REQUIRED=true
+    ports:
+      - "7002:8000"
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: services/frontend/Dockerfile
+      args:
+        VITE_API_URL: /api
+    image: retinal/frontend:latest
+    container_name: retinal-frontend
+    restart: unless-stopped
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    image: retinal/nginx:latest
+    container_name: retinal-nginx
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PORT:-7000}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/nginx-health"]
+      interval: 20s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  ollama-cache:
+    driver: local
+    name: retinal_ollama_cache

@@ -3,14 +3,14 @@ Backend API — prediction endpoints.
 
 Pipeline for each image:
   1. Size check (max upload limit)
-  2. VLM stage 1 — silent eye-image gate
+  2. VLM gate — MANDATORY eye-image verification (fail-closed)
   3. Model inference (EfficientNet-B4)
   4. Advisory generation (risk level + base text)
-  5. VLM stage 2 — personalised analysis overlaid on advisory
+  5. VLM analysis — personalised advisory (fail-open, fallback to static)
   6. Response
 
-The VLM integration is completely transparent to the user.
-Any image format can be uploaded; the VLM decides whether it is retinal.
+The VLM gate is FAIL-CLOSED: if it cannot confirm the image is an eye,
+the request is rejected. Non-eye images NEVER reach the CNN.
 """
 
 from __future__ import annotations
@@ -40,6 +40,7 @@ from services.backend.src.config import (
     TRAIN_LOSS,
     VAL_LOSS,
     DISEASE_FULL_NAMES,
+    VLM_GATE_REQUIRED,
 )
 from services.backend.src.schemas import (
     BatchPredictionResponse,
@@ -50,10 +51,9 @@ from services.backend.src.schemas import (
 )
 from services.backend.src.services.advisory_service import generate_advisory
 from services.backend.src.services.model_client import ModelClient
-from services.backend.src.services.validation_service import (
-    validate_upload_size,
-)
+from services.backend.src.services.validation_service import validate_upload_size
 from services.backend.src.services import vlm_service
+from services.backend.src.services.vlm_service import VLMUnavailableError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Retinal Classifier"])
@@ -70,22 +70,57 @@ async def _process_single_image(
 ) -> PredictionResponse:
     """
     Full pipeline for one image:
-      size check → VLM gate → model inference → advisory → VLM analysis → response.
+      size check → VLM gate (fail-closed) → model inference → advisory → VLM analysis → response.
     """
     t_start = time.perf_counter()
 
-    # ── 1. Read bytes and validate size only ──────────────────────────────────
+    # ── 1. Read bytes and validate size ───────────────────────────────────────
     file_bytes   = await image.read()
     content_type = image.content_type or "image/jpeg"
     validate_upload_size(file_bytes, image.filename or "upload", MAX_FILE_SIZE_MB)
 
-    # ── 2. VLM stage 1 — silent eye-image gate (log only, non-blocking) ─────
-    is_eye = await vlm_service.check_is_eye_image(file_bytes, content_type)
-    if not is_eye:
-        logger.info(
-            "[%s] VLM gate returned non-eye for file=%s — proceeding anyway",
-            request_id,
-            image.filename,
+    # ── 2. VLM gate — MANDATORY, FAIL-CLOSED ─────────────────────────────────
+    #
+    # If VLM says NO  → HTTP 422 (not an eye image)
+    # If VLM errors   → HTTP 503 (service unavailable, try again)
+    # If VLM says YES → proceed to CNN inference
+    #
+    if VLM_GATE_REQUIRED:
+        try:
+            is_eye = await vlm_service.check_is_eye_image(file_bytes, content_type)
+        except VLMUnavailableError as exc:
+            logger.error(
+                "[%s] VLM gate unavailable — rejecting request | file=%s | %s",
+                request_id, image.filename, exc.reason,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "The image verification service is temporarily unavailable. "
+                    "Please try again in a few moments."
+                ),
+            ) from exc
+
+        if not is_eye:
+            logger.info(
+                "[%s] VLM gate rejected | file=%s | reason=not an eye image",
+                request_id, image.filename,
+            )
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "This upload does not appear to be an eye or retinal image. "
+                    "Please upload a clear fundus photograph, OCT scan, or other "
+                    "ophthalmic image. Screenshots, selfies, documents, and "
+                    "non-eye photos are not supported."
+                ),
+            )
+
+        logger.info("[%s] VLM gate passed | file=%s", request_id, image.filename)
+    else:
+        logger.warning(
+            "[%s] VLM gate DISABLED (VLM_GATE_REQUIRED=false) | file=%s",
+            request_id, image.filename,
         )
 
     # ── 3. Model inference ────────────────────────────────────────────────────
@@ -110,7 +145,7 @@ async def _process_single_image(
     # ── 4. Structure advisory (risk level + base text) ────────────────────────
     advisory_result = generate_advisory(predictions_above_threshold)
 
-    # ── 5. VLM stage 2 — personalised image-grounded analysis ────────────────
+    # ── 5. VLM analysis — personalised (fail-open, fallback to static) ───────
     disease_full_names = [
         DISEASE_FULL_NAMES.get(d, d)
         for d in advisory_result["detected_diseases"]
@@ -230,6 +265,8 @@ async def predict_batch(
 
     responses: list[PredictionResponse] = []
     for i, result in enumerate(results):
+        if isinstance(result, HTTPException):
+            raise result
         if isinstance(result, Exception):
             logger.error("[%s] Batch item %d failed: %s", req_id, i, result)
             raise HTTPException(

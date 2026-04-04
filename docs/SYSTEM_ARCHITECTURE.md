@@ -1,64 +1,71 @@
 # System Architecture
 
-This document outlines the high-level system architecture and data flow of the Retinal Disease Classifier.
+This project runs as a containerized microservice system with local VLM support through Ollama.
 
-## Overview
+## Service Topology
 
-The application has been upgraded from a standalone FastAPI backend into a robust, Dockerized microservices architecture. This separation of concerns allows for independent scaling, better resource allocation (especially GPU isolation), and a cleaner development lifecycle.
+- `nginx`: public entry point and reverse proxy
+- `frontend`: React single-page app
+- `backend`: FastAPI orchestration and business logic
+- `model-service`: EfficientNet-B4 inference service
+- `ollama`: local vision-language model runtime
+- `ollama-pull`: one-shot model pull init container
 
-## Core Microservices
+## Network Roles
 
-### 1. Nginx Reverse Proxy (`nginx/`)
-- **Role**: Public-facing entry point (Port 80/443).
-- **Function**: Routes traffic appropriately between the frontend and the backend API based on the URL path.
-- **Security**: Ensures that internal services (like the GPU Model Service) are not exposed directly to the outside world.
+- Public traffic enters through `nginx` on host port `7000`.
+- Internal calls use Docker service DNS on the shared app network.
+- `model-service` is internal only (`http://model-service:8001`).
+- `ollama` is internal for backend (`http://ollama:11434`) and optionally exposed on host `11434`.
 
-### 2. React Frontend (`services/frontend/`)
-- **Role**: User Interface.
-- **Function**: A Single Page Application (SPA) built with React/Vite that allows users to seamlessly upload fundus images and view inference results.
-
-### 3. Backend API Gateway (`services/backend/`)
-- **Role**: Request Orchestration & Validation (Port 8000).
-- **Function**: 
-  - Validates incoming requests.
-  - Implements the [Validation Service](VALIDATION_SERVICE.md) to heuristically filter out non-fundus images.
-  - Manages overarching business logic, cross-origin resource sharing (CORS), and standardized API error formatting.
-  - Forwards valid requests to the underlying Model Service.
-
-### 4. Model Inference Service (`services/model/`)
-- **Role**: Deep Learning Inference Engine (Port 8001).
-- **Function**: 
-  - Dedicated service for running the EfficientNet-B4 PyTorch model.
-  - Exclusively reserves system GPU(s) via NVIDIA Container Toolkit.
-  - Runs with a **single worker** (`MODEL_SERVICE_WORKERS=1`) to prevent GPU Out-of-Memory (OOM) errors that would occur if multiple processes tried to load the model simultaneously.
-  - Utilizes a persistent HuggingFace cache volume to avoid re-downloading model weights on restart.
-
----
-
-## Request Flow
+## End-to-End Request Flow
 
 ```mermaid
 graph TD
-    Client[Client / Browser] -->|HTTP :80| Nginx[Nginx Reverse Proxy]
-    
-    Nginx -->|/ | Frontend[React Frontend]
-    Nginx -->|/api/*| Backend[Backend API Gateway :8000]
-    
-    Backend -->|1. Image Validation| ValidationService[Validation Service]
-    ValidationService -- Invalid --> Error[422 Unprocessable Entity]
-    ValidationService -- Valid --> Backend
-    
-    Backend -->|2. HTTP POST /predict| ModelService[Model Inference Service :8001]
-    ModelService -.->|Loads weights| HF[(HuggingFace Cache)]
-    ModelService -->|3. Predictions| Backend
-    
-    Backend -->|4. Formats Response| Nginx
-    Nginx --> Client
+    U[User Browser] --> N[Nginx :7000]
+    N --> F[Frontend]
+    N -->|/api| B[Backend :8000]
+    B --> G[VLM Gate via Ollama]
+    G -->|YES| M[Model Service :8001]
+    G -->|NO| E422[HTTP 422]
+    G -->|Unavailable| E503[HTTP 503]
+    M --> B
+    B --> A[VLM Advisory via Ollama]
+    A --> B
+    B --> N
+    N --> U
 ```
 
-## Docker Configuration
+## Validation and Inference Contract
 
-The application ecosystem is defined in `docker-compose.yml`:
-- **Networking**: Relies on a private bridge network (`app-network`).
-- **Volumes**: A named volume (`hf-cache`) is mounted to `/app/.cache/huggingface` in the model service, ensuring fast startups.
-- **GPU Passthrough**: Configured via the `deploy` key, reserving all available `nvidia` devices.
+The backend enforces this sequence:
+
+1. Upload size and file-level checks.
+2. VLM eye-image gate.
+3. CNN inference for 45 disease labels.
+4. Static advisory generation.
+5. Optional VLM personalized advisory enrichment.
+
+Gate behavior is strict by default:
+
+- Explicit non-eye result: reject with `422`.
+- Gate unavailable after retries: reject with `503`.
+
+Advisory enrichment is fail-open:
+
+- If stage-2 VLM fails, backend returns static advisory text.
+
+## Deployment Variants
+
+- `docker-compose.yml`: full stack with GPU-ready model-service.
+- `docker-compose.cpu.yml`: standalone CPU mode with same service shape.
+- `docker-compose.override.yml`: local overrides on top of main compose.
+
+## Core Source Paths
+
+- `services/backend/src/routers/predict.py`
+- `services/backend/src/services/vlm_service.py`
+- `services/backend/src/config.py`
+- `services/model/src/main.py`
+- `docker-compose.yml`
+- `docker-compose.cpu.yml`
