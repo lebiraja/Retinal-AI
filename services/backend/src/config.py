@@ -64,11 +64,20 @@ HOST:      Final[str] = os.getenv("BACKEND_HOST", "0.0.0.0")
 PORT:      Final[int] = int(os.getenv("BACKEND_PORT", "8000"))
 WORKERS:   Final[int] = int(os.getenv("BACKEND_WORKERS", "2"))
 LOG_LEVEL: Final[str] = os.getenv("LOG_LEVEL", "info")
-# ── Vision-Language Model (Featherless / Kimi-K2.5) ───────────────────────────────
-FEATHERLESS_API_KEY:  Final[str]   = os.getenv("FEATHERLESS_API_KEY",  "")
-FEATHERLESS_BASE_URL: Final[str]   = os.getenv("FEATHERLESS_BASE_URL", "https://api.featherless.ai/v1")
-FEATHERLESS_MODEL:    Final[str]   = os.getenv("FEATHERLESS_MODEL",    "moonshotai/Kimi-K2.5")
-FEATHERLESS_TEMPERATURE: Final[float] = float(os.getenv("FEATHERLESS_TEMPERATURE", "0.2"))
+# ── Vision-Language Model (Local Ollama) ─────────────────────────────────────
+# Default base URL is Docker-to-host on Linux; override to localhost when
+# running backend directly on the host (non-container).
+OLLAMA_BASE_URL: Final[str] = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+OLLAMA_MODEL: Final[str] = os.getenv("OLLAMA_MODEL", "gemma4:e2b")
+OLLAMA_TEMPERATURE: Final[float] = float(os.getenv("OLLAMA_TEMPERATURE", "0.2"))
+OLLAMA_TIMEOUT_S: Final[float] = float(os.getenv("OLLAMA_TIMEOUT_S", "90.0"))
+VLM_GATE_TIMEOUT_S: Final[float] = float(os.getenv("VLM_GATE_TIMEOUT_S", "35.0"))
+VLM_ANALYSIS_TIMEOUT_S: Final[float] = float(os.getenv("VLM_ANALYSIS_TIMEOUT_S", "35.0"))
+VLM_GATE_MAX_TOKENS: Final[int] = int(os.getenv("VLM_GATE_MAX_TOKENS", "16"))
+VLM_ANALYSIS_MAX_TOKENS: Final[int] = int(os.getenv("VLM_ANALYSIS_MAX_TOKENS", "90"))
+VLM_GATE_REQUIRED: Final[bool] = os.getenv("VLM_GATE_REQUIRED", "true").lower() in ("true", "1", "yes")
+VLM_GATE_MAX_RETRIES: Final[int] = int(os.getenv("VLM_GATE_MAX_RETRIES", "3"))
+VLM_MAX_IMAGE_SIDE: Final[int] = int(os.getenv("VLM_MAX_IMAGE_SIDE", "768"))
 # ── Disease labels — ORDER must match model output indices ─────────────────────
 DISEASE_LABELS: Final[list[str]] = [
     "DR", "ARMD", "MH", "DN", "MYA", "BRVO", "TSLN", "ERM", "LS", "MS",

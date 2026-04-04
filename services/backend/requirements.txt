@@ -9,9 +9,6 @@ pydantic-settings>=2.3.0
 # ── HTTP client (for calling model service) ────────────────────────────────────
 httpx[http2]>=0.27.0
 
-# ── VLM client (Featherless / OpenAI-compatible) ─────────────────────────
-openai>=1.30.0
-
 # ── Image processing ──────────────────────────────────────────────────
 Pillow>=10.3.0
 numpy>=1.26.0

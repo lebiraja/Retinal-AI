@@ -1,50 +1,63 @@
-# Validation Service
+# Validation and Rejection Rules
 
-The **Validation Service** (`app/services/validation_service.py`) is a newly introduced, lightweight heuristic filter residing in the Backend API Gateway. 
+Validation is split between lightweight upload checks and VLM semantic checks.
 
-## Purpose
+## Where Validation Happens
 
-The primary purpose of this service is to prevent invalid, non-retinal images (e.g., random photos, screenshots, or corrupted files) from being processed by the EfficientNet-B4 model. 
+- File: `services/backend/src/routers/predict.py`
+- Size check: `services/backend/src/services/validation_service.py`
+- Eye-image semantic gate: `services/backend/src/services/vlm_service.py`
 
-Deep learning models will often output highly confident (but ultimately meaningless) predictions even on pure noise or completely unrelated images. This pre-flight check saves GPU compute resources and ensures the system fails fast with a helpful, descriptive error to the user rather than returning a nonsensical "disease risk" for a picture of a cat.
+## Stage 1: Upload Size Validation
 
-## Heuristic Checks
+Before any model calls, backend validates file size.
 
-The Validation Service evaluates an image based on three primary characteristics unique to retinal fundus photography. The checks are executed in `< 2 ms` per image. If any single check fails, the image is immediately rejected.
+- Config key: `MAX_FILE_SIZE_MB`
+- Default: `20`
+- Behavior on failure: `413 Payload Too Large`
 
-1. **Minimum Resolution**
-   - **Rule**: Image must be at least `64x64` pixels.
-   - **Reason**: Images smaller than this cannot realistically represent a recognizable fundus scan.
+This prevents expensive processing for oversized uploads.
 
-2. **Aspect Ratio**
-   - **Rule**: The ratio of the longest side to the shortest side must be `≤ 1.6`.
-   - **Reason**: Ophthalmoscope and fundus cameras output circular or near-square frames. Highly panoramic or extreme widescreen images are rejected.
+## Stage 2: VLM Eye-Image Gate
 
-3. **Corner Darkness (Vignette)**
-   - **Rule**: The average brightness across the four corners of the image must be `≤ 100` (on a `0-255` scale).
-   - **Reason**: Fundus cameras naturally produce a dark, circular vignette caused by the camera lens aperture. The corners of a true fundus image are almost entirely black.
+The gate asks Ollama whether the upload is an ophthalmic image.
 
-4. **Red-Channel Dominance (Warm Tone)**
-   - **Rule**: The mean intensity of the Red channel must be greater than the mean intensity of the Blue channel (`R > B`).
-   - **Reason**: Retinal tissue and the interior of the eye are heavily dominated by red and orange hues due to blood vessels. Images with dominant cool colors (blues) are statistically highly unlikely to be retinal scans.
+Accepted examples include:
 
-## Integration
+- retinal fundus photos
+- OCT images
+- slit-lamp eye images
+- optic disc images
 
-The validation process occurs transparently during the `/predict` and `/predict-batch` endpoints in the Backend API.
+Rejected examples include:
 
-```python
-# Pseudo-code representation of the flow in the Backend API Gateway
-@app.post("/predict")
-async def predict_image(image: UploadFile):
-    file_bytes = await image.read()
-    
-    # 1. Light-weight heuristic check
-    validate_fundus_image(file_bytes, image.filename) # Raises 422 if failed
-    
-    # 2. Forward to GPU Model Service
-    response = await forward_to_model_service(file_bytes)
-    
-    return response
-```
+- selfies
+- screenshots
+- documents
+- memes and unrelated photos
 
-If the validation fails, an HTTP `422 Unprocessable Entity` is returned to the client, detailing exactly which heuristic was breached (e.g., "aspect ratio too wide" or "corners too bright").
+### Gate outcomes
+
+- `YES`: continue to CNN inference
+- `NO`: return `422 Unprocessable Entity`
+- timeout/transport failures after retries: return `503 Service Unavailable`
+
+Config keys:
+
+- `VLM_GATE_REQUIRED`
+- `VLM_GATE_TIMEOUT_S`
+- `VLM_GATE_MAX_RETRIES`
+- `VLM_GATE_MAX_TOKENS`
+
+## Why This Design
+
+- Prevents non-eye inputs from generating meaningless disease predictions.
+- Keeps invalid requests cheap by rejecting early.
+- Keeps behavior explicit and debuggable through response codes.
+
+## Advisory Stage Is Separate
+
+After CNN inference, personalized advisory generation also uses VLM, but that stage is fail-open.
+
+- If advisory generation fails, prediction still returns using static advisory text.
+- This preserves availability for core classification results.

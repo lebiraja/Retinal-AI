@@ -1,182 +1,45 @@
-# Retinal Disease Classifier — Complete Documentation
+# Documentation Index
 
-**AI-Based Eye Disease Classification and Advisory System** | Phase 2 Complete (Dockerized Microservices + Web UI) ✅
+This folder contains separated documentation for training, inference, backend services, deployment, and operations.
 
----
+## Start Here
 
-## 📚 Documentation Index
+- `docs/SETUP.md`: environment and prerequisites
+- `docs/DEPLOYMENT.md`: Docker deployment modes and runtime checks
+- `docs/USER_GUIDE.md`: user-facing app usage
+- `docs/API_REFERENCE.md`: API endpoint and code reference
 
-### **For End Users**
-- **[USER_GUIDE.md](./USER_GUIDE.md)** — Installation, basic usage, examples, troubleshooting
+## Runtime and Architecture
 
-### **For Backend Developers**
-- **[BACKEND.md](./BACKEND.md)** — FastAPI/Flask integration, API endpoints, deployment
+- `docs/SYSTEM_ARCHITECTURE.md`: service topology and request flow
+- `docs/BACKEND.md`: backend gateway behavior and endpoint pipeline
+- `docs/VLM_PIPELINE.md`: Ollama gate plus advisory generation design
+- `docs/VALIDATION_SERVICE.md`: upload size and gate validation behavior
+- `docs/TROUBLESHOOTING.md`: operational failure modes and fixes
 
-### **For ML Developers & Contributors**
-- **[DEVELOPER.md](./DEVELOPER.md)** — Fine-tuning, model modifications, setup
+## ML and Model Docs
 
-### **Technical Details**
-- **[SYSTEM_ARCHITECTURE.md](./SYSTEM_ARCHITECTURE.md)** — **NEW:** Docker microservices architecture flow
-- **[VALIDATION_SERVICE.md](./VALIDATION_SERVICE.md)** — **NEW:** Heuristic image validation details
-- **[SETUP.md](./SETUP.md)** — Environment setup, dependencies, GPU configuration
-- **[ARCHITECTURE.md](./ARCHITECTURE.md)** — Model design, loss functions, data pipeline
-- **[TRAINING.md](./TRAINING.md)** — How to run training, monitoring, hyperparameter tuning
-- **[INFERENCE.md](./INFERENCE.md)** — Predictions, output formats, advanced usage
-- **[API_REFERENCE.md](./API_REFERENCE.md)** — Complete API documentation
-- **[TROUBLESHOOTING.md](./TROUBLESHOOTING.md)** — Common issues and solutions
+- `docs/ARCHITECTURE.md`: CNN model architecture and design choices
+- `docs/TRAINING.md`: training workflow and hyperparameters
+- `docs/INFERENCE.md`: inference details and output interpretation
+- `docs/MODEL_CARD.md`: model metadata and limits
+- `docs/DEVELOPER.md`: developer setup and contribution workflow
 
-### **Model Information**
-- **[MODEL_CARD.md](./MODEL_CARD.md)** — Model specifications, performance metrics, supported diseases
+## Compose Files Covered
 
-## Project Overview
+- `docker-compose.yml`: full stack, GPU-ready model-service
+- `docker-compose.cpu.yml`: standalone CPU deployment stack
+- `docker-compose.override.yml`: local override settings
 
-**Goal:** Train a multi-label CNN classifier to detect 45 retinal diseases in fundus images.
+## Current Runtime Defaults
 
-**Dataset:** RFMiD (Retinal Fundus Multi-disease Image Dataset)
-- 1,920 training images
-- 640 validation images
-- 640 test images
-- 45 disease labels per image (binary classification)
-- Total size: ~7.6 GB
+- Public UI: `http://localhost:7000`
+- Backend API (CPU compose direct): `http://localhost:7002`
+- Ollama API: `http://localhost:11434`
+- Default VLM model: `gemma4:e2b`
 
-**Hardware:**
-- GPU: NVIDIA GeForce RTX 4050 Mobile (6GB VRAM)
-- CPU: Intel i7-13650HX
-- RAM: 15.6 GB
+## Notes
 
-**Model:**
-- Base: EfficientNet-B4 (ImageNet pretrained)
-- Head: Dropout(0.4) + Linear(1792 → 45)
-- Loss: BCEWithLogitsLoss with class-weighted pos_weight
-- Optimizer: AdamW with differential learning rates
-- Scheduler: CosineAnnealingLR
-
-## File Structure
-
-```
-mindcraft-2k26/
-├── docker-compose.yml     # Run the complete application
-├── nginx/                 # Reverse proxy configuration
-├── services/              # Microservices
-│   ├── frontend/          # React App
-│   ├── backend/           # FastAPI Gateway & Validation
-│   └── model/             # PyTorch GPU Inference Engine
-├── config.py              # Centralized configuration
-├── dataset.py             # RetinalDataset class + transforms
-├── model.py               # EfficientNet-B4 builder
-├── train.py               # Main training script
-├── inference.py           # Prediction/inference script
-├── requirements.txt       # Python dependencies
-├── .gitignore             # Git ignore rules
-│
-├── dataset/               # Dataset (not in git, see SETUP.md)
-│   ├── Training_Set/
-│   ├── Evaluation_Set/
-│   └── Test_Set/
-│
-├── outputs/               # Auto-generated during training
-│   ├── checkpoints/       # Model .pt files (best_model.pt, last_model.pt)
-│   ├── logs/              # training_log.csv
-│   └── plots/             # loss_curve.png
-│
-└── docs/                  # This documentation
-    ├── README.md          # You are here
-    ├── SYSTEM_ARCHITECTURE.md # Microservices data flow
-    ├── VALIDATION_SERVICE.md  # Image validation heuristics
-    ├── SETUP.md           # Installation & setup
-    ├── ARCHITECTURE.md    # Model & design details
-    ├── TRAINING.md        # Training workflow
-    ├── INFERENCE.md       # Inference & deployment
-    ├── API_REFERENCE.md   # API docs
-    └── TROUBLESHOOTING.md # FAQ & debugging
-```
-
-## Quick Start (Application)
-
-The easiest way to start the complete system (UI + Backend + ML Engine) is via Docker Compose:
-
-```bash
-# Requires Docker & NVIDIA Container Toolkit
-docker compose up --build -d
-```
-Access the UI at `http://localhost`.
-
-## Quick Start (Training & Dev)
-
-If you are developing the ML models:
-
-### 1. Install & Setup (5 min)
-
-```bash
-cd ~/projects/mindcraft-2k26
-python3 -m venv venv
-source venv/bin/activate
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-pip install -r requirements.txt
-```
-
-See [SETUP.md](./SETUP.md) for detailed steps.
-
-### 2. Sanity Check (30 sec)
-
-```bash
-python3 train.py --epochs 2
-```
-
-Verify no OOM error and loss decreases.
-
-### 3. Full Training (12-24 hours)
-
-```bash
-python3 train.py
-```
-
-Monitor with `nvidia-smi` and `tail -f outputs/logs/training_log.csv`.
-
-### 4. Test Inference (1 min)
-
-```bash
-python3 inference.py --image dataset/Training_Set/Training_Set/Training/1.png
-```
-
-See [INFERENCE.md](./INFERENCE.md) for output format.
-
-## Key Concepts
-
-### Multi-Label Classification
-Unlike typical image classification (dog vs cat), each image can have **multiple diseases simultaneously**. The model outputs 45 binary predictions.
-
-### Class Imbalance
-Diseases have very different prevalence:
-- Common: DR (Diabetic Retinopathy)
-- Ultra-rare: Some diseases appear in <10 images
-
-**Solution:** Weighted BCEWithLogitsLoss with per-class `pos_weight` calculated from training data.
-
-### GPU Memory Management
-EfficientNet-B4 at 512×512 with batch_size=20 uses ~5.8GB. Solutions if you hit OOM:
-- Reduce `BATCH_SIZE` in `config.py`
-- Enable gradient accumulation
-- Use mixed precision (already enabled via `torch.cuda.amp`)
-
-## Completed Phases
-
-**Phase 1 (Training)** - Train EfficientNet-B4 model with heavily imbalanced RFMiD dataset. ✅
-
-**Phase 2 (Application Deployment)** - Build microservices API, validation heuristics, and React frontend Web App deployment via Docker Compose. ✅
-
-## For New Developers
-
-**Starting points:**
-1. Read [SETUP.md](./SETUP.md) and get environment running
-2. Skim [ARCHITECTURE.md](./ARCHITECTURE.md) to understand the model
-3. Run sanity check (`python3 train.py --epochs 2`)
-4. Check [TRAINING.md](./TRAINING.md) for hyperparameter tuning
-5. See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) if issues arise
-
-**Questions?** Each doc has examples and code snippets.
-
----
-
-**Last Updated:** March 2026
-**Status:** Phase 2 (Microservices + UI) — Complete
+- The backend now uses local Ollama instead of cloud VLM providers.
+- Eye-image gating is mandatory by default and fails closed.
+- Personalized advisory generation fails open and falls back to static advisory text.

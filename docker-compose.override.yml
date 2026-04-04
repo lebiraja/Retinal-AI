@@ -27,6 +27,11 @@ services:
     environment:
       - LOG_LEVEL=debug
       - CORS_ORIGINS=*
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma4:e2b}
+      - OLLAMA_TEMPERATURE=${OLLAMA_TEMPERATURE:-0.2}
+      - OLLAMA_TIMEOUT_S=${OLLAMA_TIMEOUT_S:-90.0}
+      - VLM_GATE_REQUIRED=true
     volumes:
       - ./services/backend/src:/app/services/backend/src:ro
     ports:
