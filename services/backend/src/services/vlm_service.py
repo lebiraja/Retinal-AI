@@ -51,7 +51,7 @@ _client: Optional[httpx.AsyncClient] = None
 def _get_client() -> httpx.AsyncClient:
     global _client
     if _client is None:
-        from services.backend.src.config import (
+        from config import (
             OLLAMA_BASE_URL,
             OLLAMA_TIMEOUT_S,
         )
@@ -64,7 +64,7 @@ def _get_client() -> httpx.AsyncClient:
 
 def _b64_image(image_bytes: bytes) -> str:
     """Return base64 image data, downscaled for faster VLM processing."""
-    from services.backend.src.config import VLM_MAX_IMAGE_SIDE
+    from config import VLM_MAX_IMAGE_SIDE
 
     try:
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
@@ -95,7 +95,7 @@ async def check_is_eye_image(image_bytes: bytes, content_type: str) -> bool:
     IMPORTANT: This function is FAIL-CLOSED. If it cannot reach the VLM or
     parse the answer, it raises instead of returning a fallback.
     """
-    from services.backend.src.config import (
+    from config import (
         OLLAMA_MODEL,
         VLM_GATE_MAX_RETRIES,
         VLM_GATE_MAX_TOKENS,
@@ -212,7 +212,7 @@ async def generate_analysis(
     NOTE: Unlike the gate, this function is FAIL-OPEN. If VLM is unavailable,
     the static advisory from AdvisoryService is perfectly adequate.
     """
-    from services.backend.src.config import (
+    from config import (
         OLLAMA_MODEL,
         OLLAMA_TEMPERATURE,
         DISEASE_FULL_NAMES,

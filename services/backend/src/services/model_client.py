@@ -6,15 +6,20 @@ Architecture:
                                (GPU container)
 
 The client is built on top of httpx (async) with:
-  • Connection pooling (single shared AsyncClient)
+  • Connection pooling (single shared AsyncClient — lazy initialisation)
   • Configurable timeouts
   • Automatic retries with exponential back-off on transient errors
   • Structured logging with per-request correlation IDs
 
-This module owns the interface contract between the backend and model
-services.  The model service schema lives in services/model/src/schemas.py;
-we replicate the response fields we care about in TypedDicts here so that
-the backend has no import dependency on the model service package at runtime.
+Django migration note
+─────────────────────
+The old FastAPI version called ModelClient.startup() inside the lifespan
+context manager.  Django has no equivalent async lifespan hook, so the
+client is now created lazily on the first request via _get_or_create_client().
+This is thread-safe for async views because asyncio is single-threaded.
+ModelClient.startup() / .shutdown() are kept for backwards-compatibility but
+are no-ops when called from Django (startup becomes lazy; shutdown is
+registered via atexit).
 """
 
 from __future__ import annotations
@@ -27,7 +32,7 @@ from typing import Dict, List, TypedDict
 
 import httpx
 
-from services.backend.src.config import (
+from config import (
     MODEL_CONNECT_TIMEOUT,
     MODEL_MAX_RETRIES,
     MODEL_READ_TIMEOUT,
@@ -45,48 +50,58 @@ class InferenceResult(TypedDict):
     elapsed_ms:      float
 
 
-# ── Shared async client ────────────────────────────────────────────────────────
-# Instantiated once at import time; lifecycle managed by FastAPI lifespan.
+# ── Shared async client — lazy singleton ──────────────────────────────────────
+# Created on the first request; no explicit startup call required by Django.
 _client: httpx.AsyncClient | None = None
 
 
-def _get_client() -> httpx.AsyncClient:
+def _make_client() -> httpx.AsyncClient:
+    """Build a fresh httpx.AsyncClient with project-standard settings."""
+    return httpx.AsyncClient(
+        base_url=MODEL_SERVICE_URL,
+        timeout=httpx.Timeout(
+            connect=MODEL_CONNECT_TIMEOUT,
+            read=MODEL_READ_TIMEOUT,
+            write=10.0,
+            pool=5.0,
+        ),
+        limits=httpx.Limits(
+            max_connections=20,
+            max_keepalive_connections=10,
+            keepalive_expiry=30,
+        ),
+        http2=False,
+    )
+
+
+async def _get_or_create_client() -> httpx.AsyncClient:
+    """Return the singleton client, creating it lazily if needed."""
+    global _client
     if _client is None:
-        raise RuntimeError(
-            "ModelClient not initialised. Call ModelClient.startup() first."
-        )
+        _client = _make_client()
+        logger.info("ModelClient lazy-init — base_url=%s", MODEL_SERVICE_URL)
     return _client
 
 
 class ModelClient:
     """Namespace for model-service lifecycle and request methods."""
 
-    # ── Lifecycle ──────────────────────────────────────────────────────── #
+    # ── Lifecycle (kept for backwards-compat; Django uses lazy init) ───── #
 
     @staticmethod
     async def startup() -> None:
-        """Create the shared HTTP client.  Call once from FastAPI lifespan."""
-        global _client
-        _client = httpx.AsyncClient(
-            base_url=MODEL_SERVICE_URL,
-            timeout=httpx.Timeout(
-                connect=MODEL_CONNECT_TIMEOUT,
-                read=MODEL_READ_TIMEOUT,
-                write=10.0,
-                pool=5.0,
-            ),
-            limits=httpx.Limits(
-                max_connections=20,
-                max_keepalive_connections=10,
-                keepalive_expiry=30,
-            ),
-            http2=False,  # keep simple; model service is internal
-        )
-        logger.info("ModelClient initialised — base_url=%s", MODEL_SERVICE_URL)
+        """
+        Optionally pre-warm the HTTP client.
+
+        Django: called from AppConfig.ready() indirectly — safe to skip;
+                the client is created lazily on the first request.
+        FastAPI: called from the lifespan context manager (legacy behaviour).
+        """
+        await _get_or_create_client()
 
     @staticmethod
     async def shutdown() -> None:
-        """Gracefully close the HTTP client.  Call once from FastAPI lifespan."""
+        """Gracefully close the HTTP client."""
         global _client
         if _client is not None:
             await _client.aclose()
@@ -102,7 +117,8 @@ class ModelClient:
         Returns False instead of raising on any network error.
         """
         try:
-            resp = await _get_client().get("/health", timeout=3.0)
+            client = await _get_or_create_client()
+            resp = await client.get("/health", timeout=3.0)
             return resp.status_code == 200
         except Exception:
             return False
@@ -131,11 +147,12 @@ class ModelClient:
         image_b64 = base64.b64encode(image_bytes).decode("ascii")
         payload   = {"image_b64": image_b64, "threshold": threshold}
 
+        client = await _get_or_create_client()
         last_exc: Exception | None = None
         for attempt in range(1, MODEL_MAX_RETRIES + 2):
             try:
                 t0   = time.perf_counter()
-                resp = await _get_client().post("/inference", json=payload)
+                resp = await client.post("/inference", json=payload)
                 resp.raise_for_status()
                 elapsed = (time.perf_counter() - t0) * 1000
 

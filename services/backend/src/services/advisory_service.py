@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, TypedDict
 
-from services.backend.src.config import DISEASE_FULL_NAMES, HIGH_RISK_DISEASES
+from config import DISEASE_FULL_NAMES, HIGH_RISK_DISEASES
 
 
 # ── Advisory text bank ─────────────────────────────────────────────────────────

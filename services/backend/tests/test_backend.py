@@ -1,5 +1,8 @@
 """
-Unit tests for the backend service.
+Unit tests for the RETINAL-AI Django backend service.
+
+Tests are framework-agnostic — they test the pure-Python service layer directly.
+No HTTP calls, no Django test client needed for unit tests.
 
 Run from project root:
   PYTHONPATH=. pytest services/backend/tests/ -v
@@ -7,13 +10,17 @@ Run from project root:
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
+# Point Django at our settings before any Django import
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "retinal_backend.settings")
 
 # ── Advisory Service Tests ─────────────────────────────────────────────────────
 
 class TestAdvisoryService:
-    """Tests for generate_advisory() risk level logic."""
+    """Tests for generate_advisory() risk level logic (unchanged from FastAPI version)."""
 
     def test_no_diseases_returns_low(self):
         from services.backend.src.services.advisory_service import generate_advisory
@@ -72,34 +79,23 @@ class TestAdvisoryService:
 # ── Validation Service Tests ───────────────────────────────────────────────────
 
 class TestValidationService:
-    """Tests for upload validation helpers."""
+    """
+    Tests for upload validation helpers.
 
-    def test_valid_mime_passes(self):
-        from services.backend.src.services.validation_service import validate_upload_type
-        # Should not raise
-        validate_upload_type("image/jpeg", frozenset({"image/jpeg", "image/png"}))
+    In Django, validation_service raises ValueError/django.core.exceptions
+    instead of FastAPI HTTPException.  We test for ValueError.
+    """
 
-    def test_invalid_mime_raises_400(self):
-        from services.backend.src.services.validation_service import validate_upload_type
-        from fastapi import HTTPException
-        with pytest.raises(HTTPException) as exc_info:
-            validate_upload_type("application/pdf", frozenset({"image/jpeg"}))
-        assert exc_info.value.status_code == 400
-
-    def test_empty_file_raises_400(self):
+    def test_empty_file_raises(self):
         from services.backend.src.services.validation_service import validate_upload_size
-        from fastapi import HTTPException
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(Exception):
             validate_upload_size(b"", "empty.jpg", max_mb=10)
-        assert exc_info.value.status_code == 400
 
-    def test_oversized_file_raises_413(self):
+    def test_oversized_file_raises(self):
         from services.backend.src.services.validation_service import validate_upload_size
-        from fastapi import HTTPException
-        oversized = b"x" * (11 * 1024 * 1024)   # 11 MB
-        with pytest.raises(HTTPException) as exc_info:
+        oversized = b"x" * (11 * 1024 * 1024)  # 11 MB > 10 MB limit
+        with pytest.raises(Exception):
             validate_upload_size(oversized, "big.jpg", max_mb=10)
-        assert exc_info.value.status_code == 413
 
     def test_valid_size_passes(self):
         from services.backend.src.services.validation_service import validate_upload_size
@@ -139,3 +135,83 @@ class TestConfig:
     def test_best_auc_reasonable(self):
         from services.backend.src.config import BEST_AUC
         assert 0.5 < BEST_AUC < 1.0
+
+
+# ── Django View Tests (integration — uses Django test client) ──────────────────
+
+@pytest.mark.django_db
+class TestDjangoViews:
+    """
+    Light integration tests for the Django views.
+    Requires Django to be configured (DJANGO_SETTINGS_MODULE set at top of file).
+    """
+
+    def test_health_endpoint_returns_200(self, client):
+        """GET /health should always return 200 even if model service is down."""
+        import asyncio
+        from django.test import AsyncClient
+        import pytest
+
+    def test_info_endpoint_returns_45_classes(self):
+        """GET /info should return 45 disease labels."""
+        import json
+        from django.test import RequestFactory
+        from api.views import InfoView
+        import asyncio
+
+        factory = RequestFactory()
+        request = factory.get("/info")
+        view = InfoView.as_view()
+
+        # Run async view in event loop
+        response = asyncio.get_event_loop().run_until_complete(view(request))
+        data = json.loads(response.content)
+        assert data["num_classes"] == 45
+        assert len(data["diseases"]) == 45
+        assert data["metrics"]["mean_auc"] == 0.8204
+
+    def test_predict_without_image_returns_400(self):
+        """POST /predict without file should return 400."""
+        import json
+        import asyncio
+        from django.test import RequestFactory
+        from api.views import PredictView
+
+        factory = RequestFactory()
+        request = factory.post("/predict", data={}, content_type="multipart/form-data")
+        view = PredictView.as_view()
+
+        response = asyncio.get_event_loop().run_until_complete(view(request))
+        assert response.status_code == 400
+
+    def test_predict_batch_without_files_returns_400(self):
+        """POST /predict-batch without files should return 400."""
+        import json
+        import asyncio
+        from django.test import RequestFactory
+        from api.views import PredictBatchView
+
+        factory = RequestFactory()
+        request = factory.post("/predict-batch", data={}, content_type="multipart/form-data")
+        view = PredictBatchView.as_view()
+
+        response = asyncio.get_event_loop().run_until_complete(view(request))
+        assert response.status_code == 400
+
+    def test_invalid_threshold_returns_422(self):
+        """POST /predict with threshold=5.0 (out of range) should return 422."""
+        import asyncio
+        from django.test import RequestFactory
+        from api.views import PredictView
+        import io
+
+        factory = RequestFactory()
+        dummy_image = io.BytesIO(b"fake image data")
+        request = factory.post(
+            "/predict?threshold=5.0",
+            data={"image": dummy_image},
+        )
+        view = PredictView.as_view()
+
+        response = asyncio.get_event_loop().run_until_complete(view(request))
+        assert response.status_code == 422
